@@ -96,7 +96,7 @@ export const FlashCollapsible: React.FC<LevelCollapsibleProps> = ({
                       { color: "gray" },
                     ]}
                   >
-                    Locked{" "}
+                   
                     <Ionicons
                       name="lock-closed"
                       size={15}

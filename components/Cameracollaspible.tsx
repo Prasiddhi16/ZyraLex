@@ -95,7 +95,6 @@ export const CameraCollapsible: React.FC<LevelCollapsibleProps> = ({
                       { color: "gray" },
                     ]}
                   >
-                    Locked{" "}
                     <Ionicons
                       name="lock-closed"
                       size={15}

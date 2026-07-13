@@ -48,7 +48,7 @@ export const LevelCollapsible: React.FC<LevelCollapsibleProps> = ({ level, previ
               <Text style={styles.levelTitle}>{level.title}</Text>
               {isLocked && (
                 <View style={styles.completeBadge}>
-                  <Text style={[styles.completeBadgeText, { color: 'gray' }]}> Locked.<Ionicons name="lock-closed" size={15} color="#52476b" /></Text>
+                  <Text style={[styles.completeBadgeText, { color: 'gray' }]}><Ionicons name="lock-closed" size={15} color="#52476b" /></Text>
                 </View>
               )}
               {isLevelComplete && (
