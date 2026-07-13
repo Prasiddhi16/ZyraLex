@@ -311,12 +311,12 @@ export default function HomeScreen() {
             onPress={() => router.push("/sign/learn")}
           />
           <ActionButton
-            icon={<Ionicons name="create-outline" size={24} color="#90bc9a" />}
+            icon={<Ionicons name="create" size={24} color="#90bc9a" />}
             label="Practice"
             onPress={() => router.push("/sign/practice")}
           />
           <ActionButton
-            icon={<Ionicons name="game-controller-outline" size={24} color="#90bc9a" />}
+            icon={<Ionicons name="game-controller" size={24} color="#90bc9a" />}
             label="Games"
             onPress={() => router.push("/sign/games")}
           />
@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     flex: 1,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.white,
     borderRadius: 12,
     paddingVertical: 16,
     borderWidth: 1,
