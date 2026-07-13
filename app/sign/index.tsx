@@ -306,17 +306,17 @@ export default function HomeScreen() {
         {/* Action Buttons */}
         <View style={styles.actionButtonsSection}>
           <ActionButton
-            icon={<Ionicons name="book-outline" size={24} color="#f1f6f2" />}
+            icon={<Ionicons name="book" size={24} color="#90bc9a" />}
             label="Learn"
             onPress={() => router.push("/sign/learn")}
           />
           <ActionButton
-            icon={<Ionicons name="create-outline" size={24} color="#edf9f0" />}
+            icon={<Ionicons name="create-outline" size={24} color="#90bc9a" />}
             label="Practice"
             onPress={() => router.push("/sign/practice")}
           />
           <ActionButton
-            icon={<Ionicons name="game-controller-outline" size={24} color="#ebf5ee" />}
+            icon={<Ionicons name="game-controller-outline" size={24} color="#90bc9a" />}
             label="Games"
             onPress={() => router.push("/sign/games")}
           />
