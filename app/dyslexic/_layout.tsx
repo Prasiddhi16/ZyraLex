@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Tabs, useRouter } from "expo-router";
+import { Href, Tabs, useRouter } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 function CustomHeader({ handleReset }: { handleReset: () => void }) {
+  const router = useRouter();
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>
       <View style={styles.header}>
@@ -19,31 +21,22 @@ function CustomHeader({ handleReset }: { handleReset: () => void }) {
         </View>
 
         <View style={styles.headerIcons}>
-          <Ionicons
-            name="settings-outline"
-            size={22}
-            color="#6b7280"
-            style={styles.hIcon}
-          />
-          <Ionicons
-            name="shield-outline"
-            size={22}
-            color="#8b5cf6"
-            style={styles.hIcon}
-          />
+          <Ionicons name="settings-outline" size={22} color="#6b7280" style={styles.hIcon} />
+
+          {/* Dashboard icon → navigates to /dashboard */}
+          <Pressable onPress={() => router.push("/dashboard" as Href)}>
+            <Ionicons name="shield-outline" size={22} color="#8b5cf6" style={styles.hIcon} />
+          </Pressable>
+
           <Pressable onPress={handleReset}>
-            <Ionicons
-              name="exit-outline"
-              size={22}
-              color="#3b82f6"
-              style={styles.hIcon}
-            />
+            <Ionicons name="exit-outline" size={22} color="#3b82f6" style={styles.hIcon} />
           </Pressable>
         </View>
       </View>
     </SafeAreaView>
   );
 }
+
 
 export default function DyslexicLayout() {
   const router = useRouter();
