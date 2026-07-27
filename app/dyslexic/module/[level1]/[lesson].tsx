@@ -86,6 +86,21 @@ const curriculumMap: Record<string, Record<string, any>> = {
 const LEVEL_ORDER = ["level1", "level2", "level3", "level4", "level5"];
 
 function getNextRoute(currentLevel: string, lessonKey: string): Href | null {
+  const currentLevelLessons = Object.keys(curriculumMap[currentLevel] || {});
+  const lessonIdx = currentLevelLessons.indexOf(lessonKey);
+
+  // More lessons left in this level — stay here, move to the next one in order.
+  if (lessonIdx !== -1 && lessonIdx < currentLevelLessons.length - 1) {
+    return {
+      pathname: "/dyslexic/module/[level1]/[lesson]",
+      params: {
+        level1: currentLevel,
+        lesson: currentLevelLessons[lessonIdx + 1],
+      },
+    };
+  }
+
+  // That was the last lesson in this level — now move to the next level.
   const levelIdx = LEVEL_ORDER.indexOf(currentLevel);
   const nextLevel = LEVEL_ORDER[levelIdx + 1];
   if (!nextLevel) return null;
@@ -93,9 +108,7 @@ function getNextRoute(currentLevel: string, lessonKey: string): Href | null {
   const nextLevelLessons = curriculumMap[nextLevel];
   if (!nextLevelLessons) return null;
 
-  const nextLessonKey = nextLevelLessons[lessonKey]
-    ? lessonKey
-    : Object.keys(nextLevelLessons)[0];
+  const nextLessonKey = Object.keys(nextLevelLessons)[0];
 
   return {
     pathname: "/dyslexic/module/[level1]/[lesson]",

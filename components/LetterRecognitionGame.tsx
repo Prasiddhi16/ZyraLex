@@ -1,6 +1,6 @@
 // components/LetterRecognitionGame.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Dimensions, StyleSheet, Text, TouchableOpacity, View, Modal, Image } from 'react-native';
 import { LetterRecognitionQuestion } from '../data/practice/types';
 import { speakWord } from '../services/speech';
 
@@ -20,9 +20,16 @@ export default function LetterRecognitionGame({ level, data, onComplete, onClose
   const [score, setScore] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
 
+  // Modal States for Kid-Friendly Feedback
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [isCorrectSelection, setIsCorrectSelection] = useState(false);
+
   const gameDataList = data?.letterRecognition || [];
   const totalQuestions = gameDataList.length;
   const currentData: LetterRecognitionQuestion = gameDataList[currentIndex];
+
+  // Mimo Image Asset Path
+  const mimoImageSource = require('../assets/mimoimg.png');
 
   // Animation Refs
   const bubbleScale = useRef(new Animated.Value(0)).current;
@@ -65,17 +72,26 @@ export default function LetterRecognitionGame({ level, data, onComplete, onClose
 
   const handleSelection = (choice: string) => {
     if (choice === currentData.correctAnswer) {
+      setIsCorrectSelection(true);
+      setShowFeedback(true);
       speakWord(currentData.rewardMessage || "Great job!");
       setScore(prev => prev + 1);
-      
+    } else {
+      setIsCorrectSelection(false);
+      setShowFeedback(true);
+      triggerShake();
+      speakWord(`Not quite! ${currentData.instruction}`);
+    }
+  };
+
+  const handleAdvanceNextQuestion = () => {
+    setShowFeedback(false);
+    if (isCorrectSelection) {
       if (currentIndex < totalQuestions - 1) {
         setCurrentIndex(prev => prev + 1);
       } else {
         setIsFinished(true);
       }
-    } else {
-      triggerShake();
-      speakWord(`Not quite! ${currentData.instruction}`);
     }
   };
 
@@ -90,7 +106,6 @@ export default function LetterRecognitionGame({ level, data, onComplete, onClose
     );
   }
 
-  // Adaptive layout calculations
   const isWordType = ["containsLetter", "startsWith", "endsWith"].includes(currentData.type);
   const progressPercent = ((currentIndex + 1) / totalQuestions) * 100;
 
@@ -141,6 +156,42 @@ export default function LetterRecognitionGame({ level, data, onComplete, onClose
           <Text style={s.progressText}>Question {currentIndex + 1} of {totalQuestions}</Text>
         </>
       )}
+
+      {/* 🌟 CORRECT & INCORRECT DYNAMIC FEEDBACK POPUP 🌟 */}
+      <Modal
+        transparent={true}
+        visible={showFeedback}
+        animationType="fade"
+        onRequestClose={handleAdvanceNextQuestion}
+      >
+        <View style={s.modalOverlay}>
+          <View style={[s.feedbackBox, isCorrectSelection ? s.feedbackBoxCorrect : s.feedbackBoxWrong]}>
+            {isCorrectSelection && <Text style={s.feedbackStarDecor}>🌟</Text>}
+            
+            {/* Mimo character image */}
+            <Image source={mimoImageSource} style={s.mimoImage} resizeMode="contain" />
+            
+            <Text style={[s.feedbackTitle, isCorrectSelection ? s.feedbackTextCorrect : s.feedbackTextWrong]}>
+              {isCorrectSelection ? "Correct!" : "Keep Trying!"}
+            </Text>
+            
+            <Text style={s.feedbackSub}>
+              {isCorrectSelection 
+                ? "Amazing! You got it right! Your hard work is paying off!" 
+                : "You can do it! Give it another shot."}
+            </Text>
+            
+            <TouchableOpacity 
+              style={[s.feedbackBtn, isCorrectSelection ? s.feedbackBtnCorrect : s.feedbackBtnWrong]} 
+              onPress={handleAdvanceNextQuestion}
+            >
+              <Text style={s.feedbackBtnText}>
+                {isCorrectSelection ? "Got it! →" : "Try Again"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* 🎉 CLINICAL SUCCESS SHEET */}
       {isFinished && (
@@ -200,5 +251,21 @@ const s = StyleSheet.create({
   badgeName: { fontSize: 15, fontWeight: '700', color: '#92400E' },
   badgeMeta: { fontSize: 12, color: '#B45309', marginTop: 1 },
   actionBtn: { backgroundColor: '#2563EB', width: '100%', paddingVertical: 15, borderRadius: 16, alignItems: 'center' },
-  actionBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' }
+  actionBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+
+  // Modals / Overlays UI styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  feedbackBox: { width: '90%', borderRadius: 28, borderWidth: 4, padding: 24, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 10, elevation: 8 },
+  feedbackBoxCorrect: { backgroundColor: '#E8F5E9', borderColor: '#4CAF50' },
+  feedbackBoxWrong: { backgroundColor: '#FFEBEE', borderColor: '#EF5350' },
+  mimoImage: { width: 110, height: 110, marginBottom: 16 },
+  feedbackStarDecor: { position: 'absolute', top: 16, right: 20, fontSize: 24 },
+  feedbackTitle: { fontSize: 28, fontWeight: '900', marginBottom: 8 },
+  feedbackTextCorrect: { color: '#2E7D32' },
+  feedbackTextWrong: { color: '#C62828' },
+  feedbackSub: { fontSize: 16, fontWeight: '600', color: '#455A64', textAlign: 'center', marginBottom: 24, lineHeight: 22 },
+  feedbackBtn: { width: '100%', paddingVertical: 16, borderRadius: 16, alignItems: 'center' },
+  feedbackBtnCorrect: { backgroundColor: '#4CAF50' },
+  feedbackBtnWrong: { backgroundColor: '#EF5350' },
+  feedbackBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' }
 });

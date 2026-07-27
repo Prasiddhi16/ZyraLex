@@ -1,6 +1,6 @@
 // components/SimpleWordsGame.tsx
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Dimensions, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Dimensions, StyleSheet, Text, TouchableOpacity, View, Image } from 'react-native';
 import { speakWord } from '../services/speech';
 
 const { width, height } = Dimensions.get('window');
@@ -20,14 +20,26 @@ export default function SimpleWordsGame({ level, data, onComplete, onClose }: Pr
   const [isWordComplete, setIsWordComplete] = useState(false);
   const [isGameFinished, setIsGameFinished] = useState(false);
 
+  // Fun Mimo Feedback States
+  const [mimoStatus, setMimoStatus] = useState<"happy" | "celebrating" | "oops">("happy");
+  const [mimoSpeech, setMimoSpeech] = useState("Tap letters to build the word!");
+
   // Support matrix layouts called simpleWords or words
   const gameDataList = data?.simpleWords || data?.words || [];
   const totalWords = gameDataList.length;
   const currentData = gameDataList[currentIndex] || { word: '', scrambled: [], meaningClue: '', audioPrompt: '' };
 
+  // Static Image Asset Path for Mimo
+  const mimoImageSource = require('../assets/mimoimg.png');
+
   // Animation Anchors
   const letterScale = useRef(new Animated.Value(0)).current;
   const slideCelebration = useRef(new Animated.Value(-height)).current;
+  
+  // New Mimo Reaction Animation Refs
+  const mimoBounce = useRef(new Animated.Value(0)).current;
+  const shakeAnim = useRef(new Animated.Value(0)).current;
+  const bgFlashColor = useRef(new Animated.Value(0)).current;
 
   // Track dynamic scrambles so they stay stable per question
   const [scrambledPool, setScrambledPool] = useState<string[]>([]);
@@ -41,6 +53,8 @@ export default function SimpleWordsGame({ level, data, onComplete, onClose }: Pr
     setUsedIndices([]);
     setIsWordComplete(false);
     setScrambledPool(currentData.scrambled ? [...currentData.scrambled] : []);
+    setMimoStatus("happy");
+    setMimoSpeech("Can you spell this word? 🤔");
 
     letterScale.setValue(0);
     Animated.spring(letterScale, {
@@ -67,8 +81,15 @@ export default function SimpleWordsGame({ level, data, onComplete, onClose }: Pr
     }
   }, [isGameFinished]);
 
+  const triggerMimoBounce = () => {
+    Animated.sequence([
+      Animated.timing(mimoBounce, { toValue: -20, duration: 120, useNativeDriver: true }),
+      Animated.timing(mimoBounce, { toValue: 0, duration: 100, useNativeDriver: true }),
+    ]).start();
+  };
+
   const handleLetterTap = (letter: string, index: number) => {
-    if (usedIndices.includes(index)) return;
+    if (usedIndices.includes(index) || isWordComplete) return;
 
     const nextSelection = [...selectedLetters, letter];
     const nextUsed = [...usedIndices, index];
@@ -76,19 +97,54 @@ export default function SimpleWordsGame({ level, data, onComplete, onClose }: Pr
     setSelectedLetters(nextSelection);
     setUsedIndices(nextUsed);
     speakWord(letter.toLowerCase());
+    
+    // Mimo bounces lightly with positive energy on regular letter placement
+    triggerMimoBounce();
 
+    // Check if word entry is complete
     if (nextSelection.length === (currentData.word?.length || 0)) {
       const spelledWord = nextSelection.join("");
       
       if (spelledWord === currentData.word) {
         setIsWordComplete(true);
+        setMimoStatus("celebrating");
+        setMimoSpeech(`Sparkly perfect! That spells ${currentData.word}! 🎉`);
         speakWord(`Sparkly perfect! That spells ${currentData.word}!`);
+        
+        // Big happy victory dance bounce sequence for Mimo
+        Animated.sequence([
+          Animated.timing(mimoBounce, { toValue: -35, duration: 150, useNativeDriver: true }),
+          Animated.timing(mimoBounce, { toValue: 0, duration: 120, useNativeDriver: true }),
+          Animated.timing(mimoBounce, { toValue: -20, duration: 100, useNativeDriver: true }),
+          Animated.timing(mimoBounce, { toValue: 0, duration: 100, useNativeDriver: true })
+        ]).start();
+
       } else {
+        // Handle Wrong Configuration Feedback 
+        setMimoStatus("oops");
+        setMimoSpeech("Keep trying! Let's shake those blocks and try again! 💪");
+        
+        // Shake blocks + Flash soft pastel red background color frame
+        Animated.parallel([
+          Animated.sequence([
+            Animated.timing(shakeAnim, { toValue: 12, duration: 50, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: -12, duration: 50, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: 8, duration: 50, useNativeDriver: true }),
+            Animated.timing(shakeAnim, { toValue: 0, duration: 50, useNativeDriver: true })
+          ]),
+          Animated.sequence([
+            Animated.timing(bgFlashColor, { toValue: 1, duration: 150, useNativeDriver: false }),
+            Animated.timing(bgFlashColor, { toValue: 0, duration: 500, useNativeDriver: false })
+          ])
+        ]).start();
+
         setTimeout(() => {
           speakWord("Let's shake those blocks and try that word one more time!");
           setSelectedLetters([]);
           setUsedIndices([]);
-        }, 1000);
+          setMimoStatus("happy");
+          setMimoSpeech("You can do it! Try another combination! 🌟");
+        }, 1400);
       }
     }
   };
@@ -117,8 +173,14 @@ export default function SimpleWordsGame({ level, data, onComplete, onClose }: Pr
     ? currentData.meaningClue.substring(currentData.meaningClue.indexOf(" ") + 1)
     : currentData.meaningClue;
 
+  // Background interpolation for mistakes
+  const interpolatedBg = bgFlashColor.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['#EFF6FF', '#FFEBEE']
+  });
+
   return (
-    <View style={s.container}>
+    <Animated.View style={[s.container, { backgroundColor: interpolatedBg }]}>
       {!isGameFinished && (
         <>
           <View style={s.headerRow}>
@@ -126,6 +188,27 @@ export default function SimpleWordsGame({ level, data, onComplete, onClose }: Pr
             <TouchableOpacity style={s.closeBtn} onPress={onClose}>
               <Text style={s.closeText}>✕</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* 🐼 DYNAMIC INTERACTIVE COMPANION COMPONENT (MIMO ZONE) */}
+          <View style={s.mimoZone}>
+            <View style={[
+              s.mimoBubble,
+              mimoStatus === "celebrating" && s.mimoBubbleCorrect,
+              mimoStatus === "oops" && s.mimoBubbleWrong
+            ]}>
+              <Text style={[
+                s.mimoBubbleText,
+                mimoStatus === "celebrating" && s.textCorrect,
+                mimoStatus === "oops" && s.textWrong
+              ]}>
+                {mimoSpeech}
+              </Text>
+            </View>
+
+            <Animated.View style={{ transform: [{ translateY: mimoBounce }] }}>
+              <Image source={mimoImageSource} style={s.mimoAvatar} resizeMode="contain" />
+            </Animated.View>
           </View>
 
           <View style={s.clueBox}>
@@ -143,14 +226,14 @@ export default function SimpleWordsGame({ level, data, onComplete, onClose }: Pr
             ))}
           </View>
 
-          <View style={s.blocksContainer}>
+          <Animated.View style={[s.blocksContainer, { transform: [{ translateX: shakeAnim }] }]}>
             {scrambledPool.map((letter, index) => {
               const isUsed = usedIndices.includes(index);
               return (
                 <Animated.View key={index} style={{ transform: [{ scale: letterScale }] }}>
                   <TouchableOpacity
                     activeOpacity={0.7}
-                    disabled={isUsed}
+                    disabled={isUsed || isWordComplete}
                     style={[s.block, isUsed && s.blockDisabled]}
                     onPress={() => handleLetterTap(letter, index)}
                   >
@@ -159,7 +242,7 @@ export default function SimpleWordsGame({ level, data, onComplete, onClose }: Pr
                 </Animated.View>
               );
             })}
-          </View>
+          </Animated.View>
 
           <View style={{ width: '100%', minHeight: 60 }}>
             {isWordComplete && (
@@ -195,27 +278,38 @@ export default function SimpleWordsGame({ level, data, onComplete, onClose }: Pr
           </TouchableOpacity>
         </Animated.View>
       )}
-    </View>
+    </Animated.View>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#EFF6FF', paddingHorizontal: 20, paddingTop: 60, paddingBottom: 30, alignItems: 'center', justifyContent: 'space-between' },
+  container: { flex: 1, paddingHorizontal: 20, paddingTop: 45, paddingBottom: 25, alignItems: 'center', justifyContent: 'space-between' },
   headerRow: { width: '100%', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   progressBadge: { fontSize: 13, fontWeight: '700', color: '#2563EB', backgroundColor: '#DBEAFE', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, overflow: 'hidden' },
   closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#BFDBFE' },
   closeText: { fontSize: 16, color: '#6B9EC8', fontWeight: 'bold' },
-  clueBox: { backgroundColor: '#fff', width: '100%', padding: 16, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: '#BFDBFE', shadowColor: '#2563EB', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
-  clueEmoji: { fontSize: 44, marginBottom: 6 },
+  
+  // 🐼 Animated Mimo Row Elements
+  mimoZone: { width: '100%', alignItems: 'center', marginVertical: 4 },
+  mimoAvatar: { width: 85, height: 85 },
+  mimoBubble: { backgroundColor: '#FFF', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 18, borderBottomWidth: 3, borderColor: '#BFDBFE', maxWidth: '85%', marginBottom: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 2 },
+  mimoBubbleCorrect: { backgroundColor: '#DCFCE7', borderColor: '#4ADE80' },
+  mimoBubbleWrong: { backgroundColor: '#FFEBEE', borderColor: '#E57373' },
+  mimoBubbleText: { fontSize: 14, fontWeight: '700', color: '#1E3A5F', textAlign: 'center' },
+  textCorrect: { color: '#15803D' },
+  textWrong: { color: '#B91C1C' },
+
+  clueBox: { backgroundColor: '#fff', width: '100%', padding: 12, borderRadius: 20, alignItems: 'center', borderWidth: 1, borderColor: '#BFDBFE', shadowColor: '#2563EB', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
+  clueEmoji: { fontSize: 36, marginBottom: 4 },
   clueText: { fontSize: 14, fontWeight: '600', color: '#1E3A5F', textAlign: 'center' },
-  trayRow: { flexDirection: 'row', gap: 14, marginVertical: 20 },
-  slot: { width: width * 0.18, height: width * 0.20, borderRadius: 16, backgroundColor: '#E0F2FE', borderWidth: 3, borderColor: '#93C5FD', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
+  trayRow: { flexDirection: 'row', gap: 12, marginVertical: 12 },
+  slot: { width: width * 0.16, height: width * 0.18, borderRadius: 16, backgroundColor: '#E0F2FE', borderWidth: 3, borderColor: '#93C5FD', borderStyle: 'dashed', alignItems: 'center', justifyContent: 'center' },
   slotSuccess: { backgroundColor: '#DCFCE7', borderColor: '#4ADE80', borderStyle: 'solid' },
-  slotText: { fontSize: 32, fontWeight: '800', color: '#1E3A5F' },
-  blocksContainer: { flexDirection: 'row', gap: 16, justifyContent: 'center', flexWrap: 'wrap', width: '100%', marginVertical: 10 },
-  block: { width: width * 0.20, height: width * 0.20, borderRadius: 18, backgroundColor: '#fff', borderWidth: 4, borderColor: '#2563EB', alignItems: 'center', justifyContent: 'center', shadowColor: '#2563EB', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 4 },
+  slotText: { fontSize: 28, fontWeight: '800', color: '#1E3A5F' },
+  blocksContainer: { flexDirection: 'row', gap: 14, justifyContent: 'center', flexWrap: 'wrap', width: '100%', marginVertical: 8 },
+  block: { width: width * 0.18, height: width * 0.18, borderRadius: 18, backgroundColor: '#fff', borderWidth: 4, borderColor: '#2563EB', alignItems: 'center', justifyContent: 'center', shadowColor: '#2563EB', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 4 },
   blockDisabled: { backgroundColor: '#DBEAFE', borderColor: '#BFDBFE', elevation: 0, shadowOpacity: 0 },
-  blockText: { fontSize: 32, fontWeight: '900', color: '#1E40AF' },
+  blockText: { fontSize: 28, fontWeight: '900', color: '#1E40AF' },
   blockTextDisabled: { color: '#93C5FD' },
   continueBtn: { backgroundColor: '#4ADE80', width: '100%', paddingVertical: 15, borderRadius: 16, alignItems: 'center', shadowColor: '#4ADE80', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 5, elevation: 3 },
   continueBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },

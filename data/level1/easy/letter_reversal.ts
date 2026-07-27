@@ -88,25 +88,25 @@ const lesson = {
 
   guidedPractice: [
     {
-      question: "🎯 Which letter is b?",
+      question: " Which letter is b?",
       options: ["b", "d"],
       answer: "b",
       interactionType: "tap-to-reveal",
     },
     {
-      question: "🐶 Drag the word that starts with d",
+      question: "Drag the word that starts with d",
       options: ["dog", "ball"],
       answer: "dog",
       interactionType: "drag-and-drop",
     },
     {
-      question: "🍌 Which word starts with b?",
+      question: " Which word starts with b?",
       options: ["banana", "door"],
       answer: "banana",
       interactionType: "tap-to-reveal",
     },
     {
-      question: "🚪 Drag the letter d into the box",
+      question: " Drag the letter d into the box",
       options: ["b", "d"],
       answer: "d",
       interactionType: "drag-and-drop",

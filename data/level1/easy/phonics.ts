@@ -94,7 +94,7 @@ const lesson = {
   },
 
   buildIt: {
-    title: "🤏 Build the Word",
+    title: " Build the Word",
     instruction:
       "Pop the missing sound team into the blank space to save the word!",
     rounds: [
@@ -190,19 +190,19 @@ const lesson = {
   guidedPractice: [
     {
       interactionType: "tap-to-reveal",
-      question: "🚂 Which sound teammate starts the word CHAIR?",
+      question: "Which sound teammate starts the word CHAIR?",
       options: ["CH", "SH"],
       answer: "CH",
     },
     {
       interactionType: "drag-and-drop",
-      question: "🤫 Which soft sound teammate starts the word SHIP?",
+      question: "Which soft sound teammate starts the word SHIP?",
       options: ["CH", "SH"],
       answer: "SH",
     },
     {
       interactionType: "tap-to-reveal",
-      question: "🧀 Tap the delicious snack that starts with the CH sound!",
+      question: "Tap the delicious snack that starts with the CH sound!",
       options: ["Cheese", "Ship"],
       answer: "Cheese",
     },

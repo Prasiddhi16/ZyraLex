@@ -2,14 +2,21 @@
 import { Mic, Square } from "lucide-react-native";
 import React, { useState } from "react";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { startListening, stopListening } from "../../services/voice";
+import { EvaluationResult, startListening, stopListening } from "../../services/voice";
 
 interface ReadAloudRecorderProps {
   targetText: string;
-  onSpeechResult: (outcome: "well_done" | "keep_trying" | "slow") => void;
+  onSpeechResult: (
+    outcome: EvaluationResult,
+    transcript: string,
+    accuracy: number
+  ) => void;
 }
 
-export default function ReadAloudRecorder({ targetText, onSpeechResult }: ReadAloudRecorderProps) {
+export default function ReadAloudRecorder({
+  targetText,
+  onSpeechResult,
+}: ReadAloudRecorderProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [spokenText, setSpokenText] = useState("");
 
@@ -17,16 +24,16 @@ export default function ReadAloudRecorder({ targetText, onSpeechResult }: ReadAl
     if (!isRecording) {
       setIsRecording(true);
       setSpokenText("");
-      
+
       startListening({
         targetText,
         onTranscriptUpdate: (text) => setSpokenText(text),
-        onComplete: () => {}
+        onComplete: () => {},
       });
     } else {
       setIsRecording(false);
-      const decision = stopListening(targetText, spokenText);
-      onSpeechResult(decision);
+      const { result, transcript, accuracy } = stopListening(targetText);
+      onSpeechResult(result, transcript, accuracy);
     }
   };
 
@@ -34,12 +41,12 @@ export default function ReadAloudRecorder({ targetText, onSpeechResult }: ReadAl
     <View style={s.container}>
       {isRecording && (
         <Text style={s.liveTranscript}>
-          Tracking: <Text style={s.italic}>"{spokenText || 'Listening...'}"</Text>
+          Tracking: <Text style={s.italic}>"{spokenText || "Listening..."}"</Text>
         </Text>
       )}
 
-      <TouchableOpacity 
-        style={[s.btnSpeak, isRecording && s.btnRecording]} 
+      <TouchableOpacity
+        style={[s.btnSpeak, isRecording && s.btnRecording]}
         onPress={handleToggleRecord}
         activeOpacity={0.7}
       >
@@ -61,23 +68,23 @@ export default function ReadAloudRecorder({ targetText, onSpeechResult }: ReadAl
 
 const s = StyleSheet.create({
   container: { width: "100%", gap: 12, alignItems: "center" },
-  btnSpeak: { 
+  btnSpeak: {
     width: "100%",
-    flexDirection: "row", 
-    alignItems: "center", 
-    justifyContent: "center", 
-    gap: 8, 
-    paddingVertical: 14, 
-    borderRadius: 12, 
-    backgroundColor: "#fff", 
-    borderWidth: 2, 
-    borderColor: "#2563EB" 
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: "#fff",
+    borderWidth: 2,
+    borderColor: "#2563EB",
   },
   btnRecording: {
     borderColor: "#DC2626",
-    backgroundColor: "#FEF2F2"
+    backgroundColor: "#FEF2F2",
   },
   btnSpeakText: { fontSize: 15, fontWeight: "600", color: "#2563EB" },
   liveTranscript: { fontSize: 14, color: "#4B5563", textAlign: "center" },
-  italic: { fontStyle: "italic", color: "#1F2937" }
+  italic: { fontStyle: "italic", color: "#1F2937" },
 });

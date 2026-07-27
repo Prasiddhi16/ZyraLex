@@ -103,20 +103,115 @@ export const ADVANCED_LESSON_DATA: LessonDataStructure = {
   ],
 
   syllableBasics: Array.from({ length: 40 }, (_, idx) => {
-    const list = [
-      { w: "GIGANTIC", c: 3, b: "GI - GAN - TIC", k: "🦖 Incredibly huge structural scale!" },
-      { w: "FANTASTIC", c: 3, b: "FAN - TAS - TIC", k: "🌟 Completely excellent or superb!" },
-      { w: "TOMORROW", c: 3, b: "TO - MOR - ROW", k: "📅 The upcoming day following today!" },
-      { w: "ALPHABET", c: 3, b: "AL - PHA - BET", k: "🔤 Arranged setup of character sets!" }
-    ];
-    const item = list[idx % list.length];
-    return {
-      id: `asyl_${idx + 1}`,
-      word: `${item.w}_${idx}`,
-      syllablesCount: item.c,
-      breakdown: item.b,
-      meaningClue: item.k,
-      audioPrompt: `Break down this multisyllabic unit: ${item.w}. Clap out the sections!`
-    };
-  })
-};
+  const list = [
+    {
+      w: "GIGANTIC",
+      c: 3,
+      b: "GI - GAN - TIC",
+      k: "🦖 Incredibly huge structural scale!",
+      a: "Listen carefully: GI-GAN-TIC. Clap the three syllables!"
+    },
+    {
+      w: "FANTASTIC",
+      c: 3,
+      b: "FAN - TAS - TIC",
+      k: "🌟 Completely excellent or superb!",
+      a: "How many beats can you hear in FAN-TAS-TIC?"
+    },
+    {
+      w: "TOMORROW",
+      c: 3,
+      b: "TO - MOR - ROW",
+      k: "📅 The upcoming day following today!",
+      a: "Tap the syllables in TO-MOR-ROW."
+    },
+    {
+      w: "ALPHABET",
+      c: 3,
+      b: "AL - PHA - BET",
+      k: "🔤 Arranged set of letters!",
+      a: "Clap along: AL-PHA-BET."
+    },
+    {
+      w: "CHOCOLATE",
+      c: 3,
+      b: "CHOC - O - LATE",
+      k: "🍫 A sweet treat made from cocoa!",
+      a: "Count the syllables in CHOC-O-LATE."
+    },
+    {
+      w: "UMBRELLA",
+      c: 3,
+      b: "UM - BREL - LA",
+      k: "☂️ Used to protect you from rain!",
+      a: "How many parts are in UM-BREL-LA?"
+    },
+    {
+      w: "PINEAPPLE",
+      c: 3,
+      b: "PINE - AP - PLE",
+      k: "🍍 A juicy tropical fruit!",
+      a: "Clap each part of PINE-AP-PLE."
+    },
+    {
+      w: "DINOSAUR",
+      c: 3,
+      b: "DI - NO - SAUR",
+      k: "🦕 A giant prehistoric reptile!",
+      a: "Listen: DI-NO-SAUR. Count the beats."
+    },
+    {
+      w: "BUTTERFLY",
+      c: 3,
+      b: "BUT - TER - FLY",
+      k: "🦋 A colorful insect with wings!",
+      a: "Tap out the syllables in BUT-TER-FLY."
+    },
+    {
+      w: "WATERMELON",
+      c: 4,
+      b: "WA - TER - MEL - ON",
+      k: "🍉 A large juicy summer fruit!",
+      a: "Can you clap all four parts of WA-TER-MEL-ON?"
+    },
+    {
+      w: "HELICOPTER",
+      c: 4,
+      b: "HEL - I - COP - TER",
+      k: "🚁 An aircraft with spinning blades!",
+      a: "Count the syllables in HEL-I-COP-TER."
+    },
+    {
+      w: "CALENDAR",
+      c: 4,
+      b: "CAL - EN - DAR",
+      k: "📆 Used to keep track of days and months!",
+      a: "Listen carefully: CAL-EN-DAR."
+    },
+    {
+      w: "VEGETABLE",
+      c: 4,
+      b: "VEG - E - TA - BLE",
+      k: "🥕 Healthy food grown in gardens and farms!",
+      a: "How many syllables are in VEG-E-TA-BLE?"
+    },
+    {
+      w: "CELEBRATION",
+      c: 4,
+      b: "CEL - E - BRA - TION",
+      k: "🎉 A special event to mark a happy occasion!",
+      a: "Clap the syllables in CEL-E-BRA-TION."
+    }
+  ];
+
+  const item = list[idx % list.length];
+
+  return {
+    id: `asyl_${idx + 1}`,
+    word: item.w,
+    syllablesCount: item.c,
+    breakdown: item.b,
+    meaningClue: item.k,
+    audioPrompt: item.a
+  };
+}) as SyllableChallenge[] };
