@@ -3,12 +3,12 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import {
-    ActivityIndicator,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    View,
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
 } from "react-native";
 
 interface WeeklyActivityProps {
@@ -40,15 +40,6 @@ const getDayLabel = (date: Date, isToday: boolean) => {
   });
 };
 
-const dyslexiaDummyActivity: Record<string, number> = {
-  Mon: 25,
-  Tue: 40,
-  Wed: 35,
-  Thu: 50,
-  Fri: 30,
-  Sat: 45,
-  Today: 35,
-};
 
 export default function DashboardScreen() {
   const [moduleChoice, setModuleChoice] = useState<string | null>(null);
@@ -62,58 +53,50 @@ export default function DashboardScreen() {
   const dailyLimit = 60;
 
   const loadLearningActivity = useCallback(
-    async (selectedModule: string) => {
-      try {
-        setLoadingActivity(true);
+  async (selectedModule: string) => {
+    try {
+      setLoadingActivity(true);
 
-        if (selectedModule === "dyslexic") {
-          const today = dyslexiaDummyActivity.Today;
+      const stored = await AsyncStorage.getItem(
+        `learningTime_${selectedModule}`
+      );
 
-          setTimeSpentToday(today);
-          setWeeklyActivity(dyslexiaDummyActivity);
+      const data: Record<string, number> = stored
+        ? JSON.parse(stored)
+        : {};
 
-          return;
-        }
+      const todayKey = getTodayKey();
 
-        const stored = await AsyncStorage.getItem("learningTime_sign");
+      const todaySeconds = data[todayKey] || 0;
+      const todayMinutes = Math.floor(todaySeconds / 60);
 
-        const data: Record<string, number> = stored
-          ? JSON.parse(stored)
-          : {};
+      setTimeSpentToday(todayMinutes);
 
-        const todayKey = getTodayKey();
+      const activity: Record<string, number> = {};
 
-        const todaySeconds = data[todayKey] || 0;
-        const todayMinutes = Math.floor(todaySeconds / 60);
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date();
+        date.setHours(0, 0, 0, 0);
+        date.setDate(date.getDate() - i);
 
-        setTimeSpentToday(todayMinutes);
+        const key = getDateKey(date);
+        const isToday = i === 0;
+        const label = getDayLabel(date, isToday);
 
-        const activity: Record<string, number> = {};
-
-        for (let i = 6; i >= 0; i--) {
-          const date = new Date();
-          date.setHours(0, 0, 0, 0);
-          date.setDate(date.getDate() - i);
-
-          const key = getDateKey(date);
-          const isToday = i === 0;
-          const label = getDayLabel(date, isToday);
-
-          activity[label] = Math.floor((data[key] || 0) / 60);
-        }
-
-        setWeeklyActivity(activity);
-      } catch (error) {
-        console.log("Error loading learning activity:", error);
-        setTimeSpentToday(0);
-        setWeeklyActivity({});
-      } finally {
-        setLoadingActivity(false);
+        activity[label] = Math.floor((data[key] || 0) / 60);
       }
-    },
-    []
-  );
 
+      setWeeklyActivity(activity);
+    } catch (error) {
+      console.log("Error loading learning activity:", error);
+      setTimeSpentToday(0);
+      setWeeklyActivity({});
+    } finally {
+      setLoadingActivity(false);
+    }
+  },
+  []
+);
   useFocusEffect(
     useCallback(() => {
       const loadDashboard = async () => {

@@ -6,9 +6,7 @@ import {
 } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
 import { useFocusEffect, useRouter } from "expo-router";
-import * as Sharing from "expo-sharing";
 import * as Speech from "expo-speech";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -26,6 +24,10 @@ import {
 import { HelloWave } from "../../components/hello-wave";
 import { COLORS } from "../../constants/colors";
 import { supabase } from "../../lib/supabase";
+import {
+  ParsedPage,
+  parsePdfDocument
+} from "../../services/pdfParserService";
 import { fetchSyllables, scanFlashcard } from "../../utils/flashcard";
 import {
   getLessonKeyForWeakArea,
@@ -72,6 +74,16 @@ export default function DyslexicHome() {
   const [completedLevels, setCompletedLevels] = useState<string[]>([]);
   const [currentLevelKey, setCurrentLevelKey] = useState<string>("level1");
   const [lessonsTotal, setLessonsTotal] = useState<number>(5);
+
+  // Easy Read reader state
+  const [readerVisible, setReaderVisible] = useState(false);
+  const [readerPages, setReaderPages] = useState<ParsedPage[]>([]);
+  const [readerPageIdx, setReaderPageIdx] = useState(0);
+  const [readerSentenceIdx, setReaderSentenceIdx] = useState<number | null>(
+    null,
+  );
+  const [readerPlaying, setReaderPlaying] = useState(false);
+  const [splitWordsOn, setSplitWordsOn] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -244,7 +256,7 @@ export default function DyslexicHome() {
   const handlePlayPronunciation = () => {
     if (isPlayingAudio || syllables.length === 0 || !currentWord) return;
     setIsPlayingAudio(true);
-    const msPerChar = 90; // tuned rough estimate for rate 0.85
+    const msPerChar = 90;
     const totalDuration = currentWord.length * msPerChar;
     const perSyllable = totalDuration / syllables.length;
 
@@ -271,68 +283,188 @@ export default function DyslexicHome() {
   const pickDocument = async () => {
     try {
       setLoading(true);
+
+      if (Platform.OS !== "web") {
+        setLoading(false);
+        Alert.alert("Local extraction is set up for web only right now.");
+        return;
+      }
+
       const result = await DocumentPicker.getDocumentAsync({
-        type: ["application/pdf", "text/plain"],
+        type: ["application/pdf", "application/json"],
         copyToCacheDirectory: true,
       });
 
-      if (result.canceled) {
+      if (result.canceled || !result.assets?.length) {
         setLoading(false);
         return;
       }
 
       const selectedFile = result.assets[0];
-      const formData = new FormData();
-      const type = selectedFile.mimeType || "application/pdf";
+      const fileName = selectedFile.name || "document";
+      const isJson =
+        selectedFile.mimeType === "application/json" ||
+        fileName.toLowerCase().endsWith(".json");
 
-      formData.append("file", {
-        uri: selectedFile.uri,
-        name: selectedFile.name || "temp_file.pdf",
-        type: type,
-      } as any);
-
-      const response = await fetch(
-        "https://grinch-cloak-grazing.ngrok-free.app/simplify",
-        {
-          method: "POST",
-          body: formData as any,
-          headers: {
-            Accept: "application/pdf",
-            "ngrok-skip-browser-warning": "true",
-          },
-        },
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
+      // On web, expo-document-picker exposes the real Blob/File on `.file`.
+      const webFile = (selectedFile as any).file as Blob | undefined;
+      if (!webFile) {
         setLoading(false);
-        Alert.alert("Backend Error:\n" + errorText);
+        Alert.alert("Could not read the selected file.");
         return;
       }
 
-      const blob = await response.blob();
-      const fileUri = FileSystem.documentDirectory + "simplified.pdf";
-      const reader = new FileReader();
+      let parsedPages: ParsedPage[];
 
-      reader.onloadend = async () => {
+      if (isJson) {
+        // Read the JSON straight off the Blob — Blob.text() works reliably
+        // on web, unlike expo-file-system's readAsStringAsync, which needs
+        // a real filesystem uri and silently fails on web blob uris.
+        let raw: string;
         try {
-          const base64data = (reader.result as string).split(",")[1];
-          await FileSystem.writeAsStringAsync(fileUri, base64data, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
+          raw = await webFile.text();
+        } catch (readErr) {
           setLoading(false);
-          Alert.alert("Your simplified PDF is ready!");
-          await Sharing.shareAsync(fileUri);
-        } catch (saveError) {
-          setLoading(false);
-          Alert.alert("Failed to save PDF");
+          Alert.alert("Could not read the JSON file.");
+          return;
         }
-      };
-      reader.readAsDataURL(blob);
-    } catch (error) {
+
+        let data: unknown;
+        try {
+          data = JSON.parse(raw);
+        } catch (parseErr) {
+          setLoading(false);
+          Alert.alert(
+            "That file isn't valid JSON. Check for a trailing comma or missing bracket.",
+          );
+          return;
+        }
+
+        if (!Array.isArray(data)) {
+          setLoading(false);
+          Alert.alert(
+            "Expected a JSON array of pages, e.g. [{ pageNumber, text, sentences, syllableMap }, ...]",
+          );
+          return;
+        }
+
+        const looksValid = data.every(
+          (p) =>
+            p &&
+            typeof p === "object" &&
+            typeof (p as any).text === "string" &&
+            Array.isArray((p as any).sentences),
+        );
+
+        if (!looksValid) {
+          setLoading(false);
+          Alert.alert(
+            "Each page needs at least { text: string, sentences: string[] }. syllableMap is optional.",
+          );
+          return;
+        }
+
+        parsedPages = (data as any[]).map((p, i) => ({
+          pageNumber: p.pageNumber ?? i + 1,
+          text: p.text,
+          sentences: p.sentences,
+          syllableMap: Array.isArray(p.syllableMap) ? p.syllableMap : [],
+        }));
+      } else {
+        // Parse entirely in-browser, no backend call at all.
+        parsedPages = await parsePdfDocument(webFile);
+
+        // parsePdfDocument swallows internal errors into a fake single page —
+        // surface that instead of silently "succeeding".
+        if (
+          parsedPages.length === 1 &&
+          parsedPages[0].text.startsWith("Parsing error occurred:")
+        ) {
+          setLoading(false);
+          Alert.alert("Extraction failed:\n" + parsedPages[0].text);
+          return;
+        }
+      }
+
+      setReaderPages(parsedPages);
+      setReaderPageIdx(0);
+      setReaderSentenceIdx(null);
+      setReaderPlaying(false);
+      setSplitWordsOn(false);
+      setReaderVisible(true);
       setLoading(false);
-      Alert.alert("Error simplifying file");
+    } catch (error) {
+      console.error("pickDocument failed:", error);
+      setLoading(false);
+      Alert.alert("Error extracting file");
     }
+  };
+
+  // Splits any word in `sentence` that appears in `syllableMap` into its
+  // syllable form (e.g. "fascinated" -> "fas·ci·nat·ed") for the Split Words toggle.
+  const applySyllableSplits = (
+    sentence: string,
+    syllableMap: ParsedPage["syllableMap"],
+  ) => {
+    if (syllableMap.length === 0) return sentence;
+    const lookup = new Map(
+      syllableMap.map((entry) => [entry.original.toLowerCase(), entry.split]),
+    );
+    return sentence.replace(/[A-Za-z]+/g, (word) => {
+      const hit = lookup.get(word.toLowerCase());
+      return hit ?? word;
+    });
+  };
+
+  const stopReaderSpeech = () => {
+    Speech.stop();
+    setReaderPlaying(false);
+  };
+
+  const speakReaderSentence = (index: number) => {
+    const page = readerPages[readerPageIdx];
+    if (!page || index >= page.sentences.length) {
+      setReaderPlaying(false);
+      setReaderSentenceIdx(null);
+      return;
+    }
+
+    setReaderSentenceIdx(index);
+    setReaderPlaying(true);
+
+    Speech.speak(page.sentences[index], {
+      rate: 1.0,
+      onDone: () => speakReaderSentence(index + 1),
+      onStopped: () => setReaderPlaying(false),
+      onError: () => setReaderPlaying(false),
+    });
+  };
+
+  const handleReaderReadAloud = () => {
+    if (readerPlaying) {
+      stopReaderSpeech();
+    } else {
+      speakReaderSentence(readerSentenceIdx ?? 0);
+    }
+  };
+
+  const handleReaderPrev = () => {
+    if (readerPageIdx === 0) return;
+    stopReaderSpeech();
+    setReaderPageIdx((idx) => idx - 1);
+    setReaderSentenceIdx(null);
+  };
+
+  const handleReaderNext = () => {
+    if (readerPageIdx >= readerPages.length - 1) return;
+    stopReaderSpeech();
+    setReaderPageIdx((idx) => idx + 1);
+    setReaderSentenceIdx(null);
+  };
+
+  const closeReader = () => {
+    stopReaderSpeech();
+    setReaderVisible(false);
   };
 
   if (dbLoading) {
@@ -632,6 +764,136 @@ export default function DyslexicHome() {
               </Pressable>
             </View>
           )}
+        </View>
+      </Modal>
+
+      <Modal
+        visible={readerVisible}
+        animationType="slide"
+        onRequestClose={closeReader}
+      >
+        <View style={styles.readerContainer}>
+          <ScrollView contentContainerStyle={styles.readerScrollContent}>
+            {readerPages[readerPageIdx]?.sentences.map((sentence, idx) => {
+              const isCurrent = idx === readerSentenceIdx;
+              const displayText = splitWordsOn
+                ? applySyllableSplits(
+                    sentence,
+                    readerPages[readerPageIdx]?.syllableMap ?? [],
+                  )
+                : sentence;
+
+              return (
+                <Text
+                  key={idx}
+                  style={[
+                    styles.readerSentence,
+                    isCurrent && styles.readerSentenceActive,
+                  ]}
+                >
+                  {displayText}
+                </Text>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.readerToolbarRow}>
+            <Pressable
+              style={[
+                styles.readerNavButton,
+                readerPageIdx === 0 && styles.readerNavButtonDisabled,
+              ]}
+              onPress={handleReaderPrev}
+              disabled={readerPageIdx === 0}
+            >
+              <Ionicons
+                name="arrow-back"
+                size={16}
+                color={readerPageIdx === 0 ? "#CBD5E1" : "#3B82F6"}
+              />
+              <Text
+                style={[
+                  styles.readerNavText,
+                  readerPageIdx === 0 && styles.readerNavTextDisabled,
+                ]}
+              >
+                Prev
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.splitWordsPill,
+                splitWordsOn && styles.splitWordsPillActive,
+              ]}
+              onPress={() => setSplitWordsOn((v) => !v)}
+            >
+              <Ionicons name="ellipse" size={10} color="#7C3AED" />
+              <Text style={styles.splitWordsText}>Split Words</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.readAloudButton}
+              onPress={handleReaderReadAloud}
+            >
+              <Ionicons
+                name={readerPlaying ? "pause" : "play"}
+                size={16}
+                color="#FFFFFF"
+              />
+              <Text style={styles.readAloudText}>
+                {readerPlaying ? "Pause" : "Read Aloud"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.readerNavButton,
+                readerPageIdx >= readerPages.length - 1 &&
+                  styles.readerNavButtonDisabled,
+              ]}
+              onPress={handleReaderNext}
+              disabled={readerPageIdx >= readerPages.length - 1}
+            >
+              <Text
+                style={[
+                  styles.readerNavText,
+                  readerPageIdx >= readerPages.length - 1 &&
+                    styles.readerNavTextDisabled,
+                ]}
+              >
+                Next
+              </Text>
+              <Ionicons
+                name="arrow-forward"
+                size={16}
+                color={
+                  readerPageIdx >= readerPages.length - 1
+                    ? "#CBD5E1"
+                    : "#3B82F6"
+                }
+              />
+            </Pressable>
+          </View>
+
+          <Pressable
+            style={styles.accessibilityLinkRow}
+            onPress={() =>
+              Alert.alert(
+                "Accessibility Settings",
+                "Font size, spacing, and theme controls go here — hook this up to your existing EasyReadSettingsModal when ready.",
+              )
+            }
+          >
+            <Ionicons name="settings-outline" size={14} color="#3B82F6" />
+            <Text style={styles.accessibilityLinkText}>
+              Adjust Accessibility Settings
+            </Text>
+          </Pressable>
+
+          <Pressable style={styles.readerCloseButton} onPress={closeReader}>
+            <Ionicons name="close" size={22} color="#64748B" />
+          </Pressable>
         </View>
       </Modal>
 
@@ -1015,5 +1277,104 @@ const styles = StyleSheet.create({
     color: "#64748b",
     fontSize: 14,
     fontWeight: "600",
+  },
+  readerContainer: {
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    paddingTop: 30,
+  },
+  readerScrollContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 20,
+  },
+  readerSentence: {
+    fontSize: 20,
+    lineHeight: 34,
+    color: "#1E293B",
+    marginBottom: 14,
+  },
+  readerSentenceActive: {
+    fontWeight: "700",
+    backgroundColor: "#FDE68A",
+    color: "#1E293B",
+  },
+  readerToolbarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E2E8F0",
+    gap: 10,
+  },
+  readerNavButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+  },
+  readerNavButtonDisabled: {
+    opacity: 0.5,
+  },
+  readerNavText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#3B82F6",
+  },
+  readerNavTextDisabled: {
+    color: "#CBD5E1",
+  },
+  splitWordsPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  splitWordsPillActive: {
+    backgroundColor: "#EDE9FE",
+    borderColor: "#C4B5FD",
+  },
+  splitWordsText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#7C3AED",
+  },
+  readAloudButton: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#2563EB",
+    borderRadius: 24,
+    paddingVertical: 14,
+  },
+  readAloudText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  accessibilityLinkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 14,
+  },
+  accessibilityLinkText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#3B82F6",
+  },
+  readerCloseButton: {
+    position: "absolute",
+    top: 12,
+    right: 16,
+    padding: 6,
   },
 });

@@ -9,8 +9,7 @@ import {
   PenLine,
   Sprout,
   Type,
-  Wrench,
-  Zap,
+  Zap
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -38,19 +37,78 @@ import { practiceDataMatrix as PRACTICE_DATA_MATRIX } from "../../data/practice"
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 type DifficultyLevel = "beginner" | "intermediate" | "advanced";
 
+// -----------------------------------------------------------------------------
+// NEW: pulled out of the old selectedLevelData useMemo so it can be reused
+// for ALL THREE levels (needed to compute the combined 4-module total for
+// each difficulty card, not just the currently active level).
+// -----------------------------------------------------------------------------
+const resolveLevelModules = (rawLevelRoot: any) => {
+  if (!rawLevelRoot) {
+    return { simpleWords: [], syllableBasics: [], letterRecognition: [], readAloud: [] };
+  }
+
+  const searchTargets = [
+    rawLevelRoot.lessons,
+    rawLevelRoot.lessonPractice,
+    rawLevelRoot.BEGINNER_LESSON_DATA,
+    rawLevelRoot.INTERMEDIATE_LESSON_DATA,
+    rawLevelRoot.ADVANCED_LESSON_DATA,
+    rawLevelRoot.default,
+    rawLevelRoot,
+  ];
+
+  let finalSimpleWords: any[] = [];
+  let finalSyllableBasics: any[] = [];
+  let finalLetterRec: any[] = [];
+
+  for (const target of searchTargets) {
+    if (target) {
+      if (Array.isArray(target.simpleWords) && target.simpleWords.length > 0) {
+        finalSimpleWords = target.simpleWords;
+      }
+      if (Array.isArray(target.syllableBasics) && target.syllableBasics.length > 0) {
+        finalSyllableBasics = target.syllableBasics;
+      }
+      if (Array.isArray(target.letterRecognition) && target.letterRecognition.length > 0) {
+        finalLetterRec = target.letterRecognition;
+      }
+    }
+  }
+
+  if (finalSimpleWords.length === 0 && rawLevelRoot.lessons) {
+    const nested = rawLevelRoot.lessons;
+    finalSimpleWords = nested?.simpleWords || [];
+    finalSyllableBasics = nested?.syllableBasics || [];
+    finalLetterRec = nested?.letterRecognition || [];
+  }
+
+  const readAloud = rawLevelRoot.readAloud || [];
+
+  return {
+    simpleWords: finalSimpleWords,
+    syllableBasics: finalSyllableBasics,
+    letterRecognition: finalLetterRec,
+    readAloud,
+  };
+};
+
 export default function DyslexicPractice() {
   const {
     currentLevel,
     setCurrentLevel,
     isLearnGatePassed,
     getLockMessage,
-    advanceToNextFeature,
-    wordsCompletedCount,
-    practiceProgress,
-    allPracticeProgress,
-    learnStatus,
-    debugCompleteLearnModule,
+    updatePracticeProgress, 
+    practiceProgress,       
+    lessonCompletions,      
+    refreshProgress,
+    getPracticeProgress,
+    getLevelCompletedCount,
+    isLearnLevelComplete,
   } = useAppProgress();
+
+  // Backward compatibility alias so existing references to learnStatus won't crash
+  const learnStatus = lessonCompletions;
 
   const [wordIndex, setWordIndex] = useState(0);
   const [spokenText, setSpokenText] = useState("");
@@ -75,51 +133,16 @@ export default function DyslexicPractice() {
 
   const rawLevelRoot = PRACTICE_DATA_MATRIX[activeLevelKey];
 
+  // UPDATED: now just calls the shared helper instead of duplicating the
+  // search-target logic inline.
   const selectedLevelData = useMemo(() => {
     if (!rawLevelRoot) return null;
-
-    const searchTargets = [
-      (rawLevelRoot as any).lessons,
-      (rawLevelRoot as any).lessonPractice,
-      (rawLevelRoot as any).BEGINNER_LESSON_DATA,
-      (rawLevelRoot as any).INTERMEDIATE_LESSON_DATA,
-      (rawLevelRoot as any).ADVANCED_LESSON_DATA,
-      (rawLevelRoot as any).default,
-      rawLevelRoot,
-    ];
-
-    let finalSimpleWords: any[] = [];
-    let finalSyllableBasics: any[] = [];
-    let finalLetterRec: any[] = [];
-
-    for (const target of searchTargets) {
-      if (target) {
-        if (Array.isArray(target.simpleWords) && target.simpleWords.length > 0) {
-          finalSimpleWords = target.simpleWords;
-        }
-        if (Array.isArray(target.syllableBasics) && target.syllableBasics.length > 0) {
-          finalSyllableBasics = target.syllableBasics;
-        }
-        if (Array.isArray(target.letterRecognition) && target.letterRecognition.length > 0) {
-          finalLetterRec = target.letterRecognition;
-        }
-      }
-    }
-
-    if (finalSimpleWords.length === 0 && (rawLevelRoot as any).lessons) {
-      const nested = (rawLevelRoot as any).lessons;
-      finalSimpleWords = nested?.simpleWords || [];
-      finalSyllableBasics = nested?.syllableBasics || [];
-      finalLetterRec = nested?.letterRecognition || [];
-    }
-
+    const modules = resolveLevelModules(rawLevelRoot);
     return {
       ...rawLevelRoot,
-      simpleWords: finalSimpleWords,
-      syllableBasics: finalSyllableBasics,
-      letterRecognition: finalLetterRec,
+      ...modules,
     };
-  }, [rawLevelRoot, activeLevelKey]);
+  }, [rawLevelRoot]);
 
   useEffect(() => {
     setSpokenText("");
@@ -130,10 +153,11 @@ export default function DyslexicPractice() {
 
   useEffect(() => {
     const total = selectedLevelData?.readAloud?.length || 0;
-    const resumeIndex = total > 0 ? Math.min(practiceProgress.lastIndex, total - 1) : 0;
+    const readAloudRecord = getPracticeProgress(activeLevelKey, "Read Aloud");
+    const resumeIndex = total > 0 ? Math.min((readAloudRecord.current_question || 1) - 1, total - 1) : 0;
     setWordIndex(resumeIndex);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentLevel, selectedLevelData]);
+  }, [currentLevel, activeLevelKey, selectedLevelData]);
 
   useEffect(() => {
     if (!activeLessonGame) {
@@ -152,29 +176,40 @@ export default function DyslexicPractice() {
     return totalReadAloudItems;
   }, [totalReadAloudItems]);
 
-  const DIFFICULTIES = useMemo(
-    () => [
-      {
-        id: "beginner" as const,
-        label: "Beginner",
-        icon: Sprout,
-        words: PRACTICE_DATA_MATRIX.beginner?.readAloud?.length || 20,
-      },
-      {
-        id: "intermediate" as const,
-        label: "Intermediate",
-        icon: Flame,
-        words: PRACTICE_DATA_MATRIX.intermediate?.readAloud?.length || 30,
-      },
-      {
-        id: "advanced" as const,
-        label: "Advanced",
-        icon: Zap,
-        words: PRACTICE_DATA_MATRIX.advanced?.readAloud?.length || 40,
-      },
-    ],
-    [],
-  );
+  // -----------------------------------------------------------------------------
+  // UPDATED: `words` is now the SUM of all 4 modules (Letter Recognition +
+  // Simple Words + Phonics Basics + Read Aloud) for that level, not just
+  // readAloud.length. This is what makes the card show e.g. 0/80 instead of
+  // 0/20, and lets the percentage reflect true overall level completion.
+  // -----------------------------------------------------------------------------
+  const DIFFICULTIES = useMemo(() => {
+    const buildLevelMeta = (
+      id: "beginner" | "intermediate" | "advanced",
+      label: string,
+      icon: any,
+      fallbackTotal: number
+    ) => {
+      const modules = resolveLevelModules(PRACTICE_DATA_MATRIX[id]);
+      const totalQuestions =
+        modules.letterRecognition.length +
+        modules.simpleWords.length +
+        modules.syllableBasics.length +
+        modules.readAloud.length;
+
+      return {
+        id,
+        label,
+        icon,
+        words: totalQuestions > 0 ? totalQuestions : fallbackTotal,
+      };
+    };
+
+    return [
+      buildLevelMeta("beginner", "Beginner", Sprout, 80),       // 20 x 4 modules
+      buildLevelMeta("intermediate", "Intermediate", Flame, 120), // 30 x 4 modules
+      buildLevelMeta("advanced", "Advanced", Zap, 160),           // 40 x 4 modules
+    ];
+  }, []);
 
   const LESSON_ITEMS = useMemo(
     () => [
@@ -219,8 +254,8 @@ export default function DyslexicPractice() {
   }, [DIFFICULTIES, activeLevelKey]);
 
   const learnLevelsCompletedCount = useMemo(
-    () => LEARN_LEVEL_KEYS.filter((key) => !!learnStatus[key]).length,
-    [learnStatus]
+    () => LEARN_LEVEL_KEYS.filter((key) => isLearnLevelComplete(key)).length,
+    [isLearnLevelComplete]
   );
 
   const handleSelectDifficulty = (diff: (typeof DIFFICULTIES)[0]) => {
@@ -234,13 +269,38 @@ export default function DyslexicPractice() {
   };
 
   const handleGameComplete = () => {
+    let practiceTypeStr = "Letter Recognition";
+    if (activeLessonGame === "SIMPLE_WORDS") practiceTypeStr = "Simple Words";
+    if (activeLessonGame === "PHONICS_BASICS") practiceTypeStr = "Phonics Basics";
+    if (activeLessonGame === "READ_ALOUD") practiceTypeStr = "Read Aloud";
+
+    const currentRecord = getPracticeProgress(activeLevelKey, practiceTypeStr);
+    const nextQuestion = currentRecord.current_question + 1;
+
+    updatePracticeProgress(
+      activeLevelKey,       
+      practiceTypeStr,      
+      nextQuestion,         
+      true,                 
+      currentRecord.score   
+    );
+
     setActiveLessonGame(null);
-    advanceToNextFeature();
   };
 
   const goToNextWord = () => {
     if (totalReadAloudItems === 0) return;
-    setWordIndex((prev) => (prev < totalReadAloudItems - 1 ? prev + 1 : 0));
+    const nextIndex = wordIndex < totalReadAloudItems - 1 ? wordIndex + 1 : 0;
+    setWordIndex(nextIndex);
+    
+    updatePracticeProgress(
+      activeLevelKey,
+      "Read Aloud",
+      nextIndex + 1,
+      nextIndex === 0,
+      lastAccuracy
+    );
+
     setSpokenText("");
     setIsSentenceCorrect(false);
     setLastAccuracy(0);
@@ -280,9 +340,13 @@ export default function DyslexicPractice() {
         bgColor: "#DCFCE7",
       });
 
-      if (typeof advanceToNextFeature === "function") {
-        advanceToNextFeature();
-      }
+      updatePracticeProgress(
+        activeLevelKey,
+        "Read Aloud",
+        wordIndex + 1,
+        true,
+        accuracy
+      );
     } else {
       setIsSentenceCorrect(false);
 
@@ -342,10 +406,29 @@ export default function DyslexicPractice() {
   };
 
   if (activeLessonGame === "LETTER_RECOGNITION") {
+    const letterRecProgress = getPracticeProgress(activeLevelKey, "Letter Recognition");
+    // TODO: LetterRecognitionGame's Props type doesn't declare
+    // initialQuestionIndex / onProgress yet, so we pass them through an
+    // `as any` bridge below to avoid a TS2322 build error. Once
+    // LetterRecognitionGame.tsx is updated to accept these two props
+    // (resume index + per-question progress callback), this can become a
+    // normal typed prop and the cast can be removed.
+    const letterRecResumeProps: any = {
+      initialQuestionIndex: Math.max((letterRecProgress.current_question || 1) - 1, 0),
+      onProgress: (questionIndex: number) =>
+        updatePracticeProgress(
+          activeLevelKey,
+          "Letter Recognition",
+          questionIndex + 1,
+          false,
+          letterRecProgress.score
+        ),
+    };
     return (
       <LetterRecognitionGame
         level={activeLevelKey}
         data={selectedLevelData as any}
+        {...letterRecResumeProps}
         onComplete={handleGameComplete}
         onClose={() => setActiveLessonGame(null)}
       />
@@ -353,10 +436,25 @@ export default function DyslexicPractice() {
   }
 
   if (activeLessonGame === "SIMPLE_WORDS") {
+    const simpleWordsProgress = getPracticeProgress(activeLevelKey, "Simple Words");
+    // TODO: same as the note above — SimpleWordsGame's Props type doesn't
+    // declare these two yet, so pass through an `as any` bridge for now.
+    const simpleWordsResumeProps: any = {
+      initialQuestionIndex: Math.max((simpleWordsProgress.current_question || 1) - 1, 0),
+      onProgress: (questionIndex: number) =>
+        updatePracticeProgress(
+          activeLevelKey,
+          "Simple Words",
+          questionIndex + 1,
+          false,
+          simpleWordsProgress.score
+        ),
+    };
     return (
       <SimpleWordsGame
         level={activeLevelKey}
         data={selectedLevelData as any}
+        {...simpleWordsResumeProps}
         onComplete={handleGameComplete}
         onClose={() => setActiveLessonGame(null)}
       />
@@ -364,10 +462,25 @@ export default function DyslexicPractice() {
   }
 
   if (activeLessonGame === "PHONICS_BASICS") {
+    const phonicsProgress = getPracticeProgress(activeLevelKey, "Phonics Basics");
+    // TODO: same as the notes above — SyllableBasicsGame's Props type doesn't
+    // declare these two yet, so pass through an `as any` bridge for now.
+    const phonicsResumeProps: any = {
+      initialQuestionIndex: Math.max((phonicsProgress.current_question || 1) - 1, 0),
+      onProgress: (questionIndex: number) =>
+        updatePracticeProgress(
+          activeLevelKey,
+          "Phonics Basics",
+          questionIndex + 1,
+          false,
+          phonicsProgress.score
+        ),
+    };
     return (
       <SyllableBasicsGame
         level={activeLevelKey}
         data={selectedLevelData as any}
+        {...phonicsResumeProps}
         onComplete={handleGameComplete}
         onClose={() => setActiveLessonGame(null)}
       />
@@ -435,7 +548,7 @@ export default function DyslexicPractice() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={s.scrollContainer}
         >
-          {/* Learn Progress strip — replaces the old single-line debug bar */}
+          {/* Learn Progress strip */}
           <View style={s.learnCard}>
             <View style={s.learnCardHeader}>
               <Text style={s.learnCardTitle}>LEARN PROGRESS</Text>
@@ -443,17 +556,11 @@ export default function DyslexicPractice() {
                 <Text style={s.learnCardCount}>
                   {learnLevelsCompletedCount} of {LEARN_LEVEL_KEYS.length} done
                 </Text>
-                <TouchableOpacity
-                  style={s.debugIconBtn}
-                  onPress={() => debugCompleteLearnModule(activeLevelKey)}
-                >
-                  <Wrench size={13} color="#6B9EC8" />
-                </TouchableOpacity>
               </View>
             </View>
             <View style={s.learnLevelRow}>
               {LEARN_LEVEL_KEYS.map((key, idx) => {
-                const done = !!learnStatus[key];
+                const done = isLearnLevelComplete(key);
                 return (
                   <View key={key} style={s.learnLevelCol}>
                     <View style={[s.learnLevelDot, done && s.learnLevelDotDone]}>
@@ -474,83 +581,83 @@ export default function DyslexicPractice() {
 
           <Text style={s.pageTitle}>Practice Sessions</Text>
 
-          {/* Difficulty list */}
           {/* Difficulty grid */}
-<View style={s.card}>
-  <Text style={s.cardTitle}>DIFFICULTY LEVEL</Text>
-  <View style={s.diffRow}>
-    {DIFFICULTIES.map((d) => {
-      const isActive = activeLevelKey === d.id;
-      const unlocked = isLearnGatePassed(d.id);
-      const levelProgress = allPracticeProgress[d.id] || {
-        completed: 0,
-        lastIndex: 0,
-      };
-      const completedCount = Math.min(levelProgress.completed, d.words);
+          <View style={s.card}>
+            <Text style={s.cardTitle}>DIFFICULTY LEVEL</Text>
+            <View style={s.diffRow}>
+              {DIFFICULTIES.map((d) => {
+                const isActive = activeLevelKey === d.id;
+                const unlocked = isLearnGatePassed(d.id);
 
-      return (
-        <TouchableOpacity
-          key={d.id}
-          onPress={() => handleSelectDifficulty(d)}
-          activeOpacity={unlocked ? 0.75 : 1}
-          disabled={!unlocked}
-          style={[
-            s.diffCard,
-            isActive && unlocked && s.diffCardActive,
-            !unlocked && s.diffCardLocked,
-          ]}
-        >
-          <View
-            style={[
-              s.diffIconBadge,
-              isActive && unlocked && s.diffIconBadgeActive,
-              !unlocked && s.diffIconBadgeLocked,
-            ]}
-          >
-            {unlocked ? (
-              <d.icon size={18} color={isActive ? "#fff" : "#2563EB"} />
-            ) : (
-              <Lock size={16} color="#94A3B8" />
-            )}
+                const completedCount = Math.min(getLevelCompletedCount(d.id), d.words);
+                // NEW: percentage across all 4 modules combined
+                const percent =
+                  d.words > 0 ? Math.round((completedCount / d.words) * 100) : 0;
+
+                return (
+                  <TouchableOpacity
+                    key={d.id}
+                    onPress={() => handleSelectDifficulty(d)}
+                    activeOpacity={unlocked ? 0.75 : 1}
+                    disabled={!unlocked}
+                    style={[
+                      s.diffCard,
+                      isActive && unlocked && s.diffCardActive,
+                      !unlocked && s.diffCardLocked,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        s.diffIconBadge,
+                        isActive && unlocked && s.diffIconBadgeActive,
+                        !unlocked && s.diffIconBadgeLocked,
+                      ]}
+                    >
+                      {unlocked ? (
+                        <d.icon size={18} color={isActive ? "#fff" : "#2563EB"} />
+                      ) : (
+                        <Lock size={16} color="#94A3B8" />
+                      )}
+                    </View>
+
+                    <Text
+                      style={[
+                        s.diffCardName,
+                        isActive && unlocked && s.diffCardNameActive,
+                        !unlocked && s.diffCardNameLocked,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {d.label}
+                    </Text>
+
+                    {unlocked ? (
+                      <>
+                        <ProgressBar
+                          completed={completedCount}
+                          total={d.words}
+                          label={null}
+                          fillColor={isActive ? "#BFDBFE" : "#2563EB"}
+                          trackColor={isActive ? "rgba(255,255,255,0.35)" : "#DBEAFE"}
+                          height={5}
+                        />
+                        {/* UPDATED: now shows completed/total AND percent, e.g. "0/80 • 0%" */}
+                        <Text
+                          style={[s.diffCardCount, isActive && s.diffCardCountActive]}
+                        >
+                          {completedCount}/{d.words} • {percent}%
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={s.diffCardLockReason} numberOfLines={3}>
+                        {getLockMessage(d.id)}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
-
-          <Text
-            style={[
-              s.diffCardName,
-              isActive && unlocked && s.diffCardNameActive,
-              !unlocked && s.diffCardNameLocked,
-            ]}
-            numberOfLines={1}
-          >
-            {d.label}
-          </Text>
-
-          {unlocked ? (
-            <>
-              <ProgressBar
-                completed={completedCount}
-                total={d.words}
-                label={null}
-                fillColor={isActive ? "#BFDBFE" : "#2563EB"}
-                trackColor={isActive ? "rgba(255,255,255,0.35)" : "#DBEAFE"}
-                height={5}
-              />
-              <Text
-                style={[s.diffCardCount, isActive && s.diffCardCountActive]}
-              >
-                {completedCount}/{d.words}
-              </Text>
-            </>
-          ) : (
-            <Text style={s.diffCardLockReason} numberOfLines={3}>
-              {getLockMessage(d.id)}
-            </Text>
-          )}
-        </TouchableOpacity>
-      );
-    })}
-  </View>
-</View>
 
           {/* Secondary Sub Games Mapping Panels List */}
           <View style={s.card}>
@@ -639,13 +746,12 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
 
-  // Learn Progress card (replaces old debugHud)
   learnCard: {
     backgroundColor: "#fff",
     borderRadius: 14,
     borderWidth: 1,
     borderColor: "#DBEAFE",
-    paddingVertical: 10,        // was: padding: 14
+    paddingVertical: 10,
     paddingHorizontal: 14,
     marginBottom: 14,
     marginTop: 8,
@@ -671,14 +777,6 @@ const s = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     color: "#2563EB",
-  },
-  debugIconBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 8,
-    backgroundColor: "#EFF6FF",
-    alignItems: "center",
-    justifyContent: "center",
   },
   learnLevelRow: {
     flexDirection: "row",
@@ -746,7 +844,6 @@ const s = StyleSheet.create({
     letterSpacing: 1,
   },
 
-  // Difficulty list (stacked rows, replaces the old 3-column grid)
   diffRow: {
     flexDirection: "row",
     gap: 8,
@@ -754,7 +851,7 @@ const s = StyleSheet.create({
   diffCard: {
     flex: 1,
     alignItems: "center",
-     paddingVertical: 6,      // was: padding: 12
+    paddingVertical: 6,
     paddingHorizontal: 6,
     padding: 12,
     borderRadius: 10,

@@ -53,6 +53,7 @@ import {
   resolveServerIp,
   setServerIpOverride,
 } from "../../../../utils/serverConfig";
+import { useLearningTimeTracker } from "../../../../utils/useLearningTimeTracker";
 const curriculumMap: Record<string, Record<string, any>> = {
   level1: {
     letter_reversal: letterReversal,
@@ -122,9 +123,10 @@ type MascotConfig = {
 };
 
 export default function LessonScreen() {
-  const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
+  useLearningTimeTracker("dyslexic");
+  const router = useRouter();
   const frameInterval = useRef<NodeJS.Timeout | null>(null);
   const confettiRef = useRef<any>(null);
   const hasGreetedRef = useRef(false);
