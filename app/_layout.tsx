@@ -2,15 +2,18 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Slot, useNavigationContainerRef, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
+import "react-native-gesture-handler";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider } from "../hooks/AuthProvider";
 import { supabase } from "../lib/supabase";
 
-// single entry point for our layout engine
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <MainNavigationApp />
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <MainNavigationApp />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 
