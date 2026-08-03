@@ -175,6 +175,28 @@ export default function DyslexicPractice() {
   const totalSessionSteps = useMemo(() => {
     return totalReadAloudItems;
   }, [totalReadAloudItems]);
+  
+   
+  // 1. When loading the screen, fetch where the user left off:
+const currentLevelName = "beginner"; // or dynamic state
+const practiceModuleName = "letter_recognition"; // matches PRACTICE_MODULE_TYPES
+
+const savedProgress = getPracticeProgress(currentLevelName, practiceModuleName);
+const [currentIndex, setCurrentIndex] = useState(savedProgress.current_question - 1);
+
+// 2. Whenever the user moves to the next question, save progress immediately:
+const handleNextQuestion = async (nextIndex: number, isCompleted: boolean) => {
+  setCurrentIndex(nextIndex);
+  
+  // Save to Supabase + local hook state via upsert
+  await updatePracticeProgress(
+    currentLevelName,
+    practiceModuleName,
+    nextIndex + 1, // Store 1-based question number
+    isCompleted,
+    currentScore
+  );
+};
 
   // -----------------------------------------------------------------------------
   // UPDATED: `words` is now the SUM of all 4 modules (Letter Recognition +
@@ -267,26 +289,42 @@ export default function DyslexicPractice() {
     if (!isLearnGatePassed(activeLevelKey)) return;
     setActiveLessonGame(featureId);
   };
+  
 
-  const handleGameComplete = () => {
-    let practiceTypeStr = "Letter Recognition";
-    if (activeLessonGame === "SIMPLE_WORDS") practiceTypeStr = "Simple Words";
-    if (activeLessonGame === "PHONICS_BASICS") practiceTypeStr = "Phonics Basics";
-    if (activeLessonGame === "READ_ALOUD") practiceTypeStr = "Read Aloud";
+// To this:
+const handleGameComplete = () => {
+  let practiceTypeStr = "Letter Recognition";
+  if (activeLessonGame === "SIMPLE_WORDS") practiceTypeStr = "Simple Words";
+  if (activeLessonGame === "PHONICS_BASICS") practiceTypeStr = "Phonics Basics";
+  if (activeLessonGame === "READ_ALOUD") practiceTypeStr = "Read Aloud";
 
-    const currentRecord = getPracticeProgress(activeLevelKey, practiceTypeStr);
-    const nextQuestion = currentRecord.current_question + 1;
+  // NEW: onComplete only ever fires once every question in the module has
+  // been answered, so the true "finished" question count is the module's
+  // actual length — not a guess derived from whatever current_question was
+  // when the screen was opened.
+  const moduleLength =
+    (selectedLevelData?.letterRecognition?.length && practiceTypeStr === "Letter Recognition"
+      ? selectedLevelData.letterRecognition.length
+      : practiceTypeStr === "Simple Words"
+      ? selectedLevelData?.simpleWords?.length || 0
+      : practiceTypeStr === "Phonics Basics"
+      ? selectedLevelData?.syllableBasics?.length || 0
+      : selectedLevelData?.readAloud?.length || 0) || 0;
 
-    updatePracticeProgress(
-      activeLevelKey,       
-      practiceTypeStr,      
-      nextQuestion,         
-      true,                 
-      currentRecord.score   
-    );
+  // NEW: read progress fresh right now instead of trusting a value that
+  // may have been captured before the game session started.
+  const currentRecord = getPracticeProgress(activeLevelKey, practiceTypeStr);
 
-    setActiveLessonGame(null);
-  };
+  updatePracticeProgress(
+    activeLevelKey,
+    practiceTypeStr,
+    moduleLength + 1,
+    true,
+    currentRecord.score
+  );
+
+  setActiveLessonGame(null);
+};
 
   const goToNextWord = () => {
     if (totalReadAloudItems === 0) return;
@@ -413,27 +451,48 @@ export default function DyslexicPractice() {
     // LetterRecognitionGame.tsx is updated to accept these two props
     // (resume index + per-question progress callback), this can become a
     // normal typed prop and the cast can be removed.
-    const letterRecResumeProps: any = {
-      initialQuestionIndex: Math.max((letterRecProgress.current_question || 1) - 1, 0),
-      onProgress: (questionIndex: number) =>
-        updatePracticeProgress(
-          activeLevelKey,
-          "Letter Recognition",
-          questionIndex + 1,
-          false,
-          letterRecProgress.score
-        ),
-    };
-    return (
-      <LetterRecognitionGame
-        level={activeLevelKey}
-        data={selectedLevelData as any}
-        {...letterRecResumeProps}
-        onComplete={handleGameComplete}
-        onClose={() => setActiveLessonGame(null)}
-      />
-    );
-  }
+    // LETTER_RECOGNITION block — change this:
+const letterRecResumeProps: any = {
+  initialQuestionIndex: Math.max((letterRecProgress.current_question || 1) - 1, 0),
+  onProgress: (questionIndex: number) =>
+    updatePracticeProgress(
+      activeLevelKey,
+      "Letter Recognition",
+      questionIndex + 1,
+      false,
+      letterRecProgress.score
+    ),
+};
+return (
+  <LetterRecognitionGame
+    level={activeLevelKey}
+    data={selectedLevelData as any}
+    {...letterRecResumeProps}
+    onComplete={handleGameComplete}
+    onClose={() => setActiveLessonGame(null)}
+  />
+);
+
+// to this (drop the `: any` bridge, pass props directly — now typed):
+return (
+  <LetterRecognitionGame
+    level={activeLevelKey}
+    data={selectedLevelData as any}
+    initialQuestionIndex={Math.max((letterRecProgress.current_question || 1) - 1, 0)}
+    onProgress={(questionIndex: number) =>
+      updatePracticeProgress(
+        activeLevelKey,
+        "Letter Recognition",
+        questionIndex + 1,
+        false,
+        letterRecProgress.score
+      )
+    }
+    onComplete={handleGameComplete}
+    onClose={() => setActiveLessonGame(null)}
+  />
+);
+}
 
   if (activeLessonGame === "SIMPLE_WORDS") {
     const simpleWordsProgress = getPracticeProgress(activeLevelKey, "Simple Words");

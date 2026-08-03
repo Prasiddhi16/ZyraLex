@@ -85,6 +85,21 @@ export default function DyslexicHome() {
   const [readerPlaying, setReaderPlaying] = useState(false);
   const [splitWordsOn, setSplitWordsOn] = useState(false);
 
+  // Accessibility / Visual Adjustments Modal State & Preferences (Temporary selection vs Applied preferences)
+  const [accessibilityModalVisible, setAccessibilityModalVisible] = useState(false);
+  const [textSizeTemp, setTextSizeTemp] = useState<"A-" | "A+">("A-");
+  const [typographyStyleTemp, setTypographyStyleTemp] = useState<"Times New Roman" | "Modern Sans">("Times New Roman");
+  const [lineSpacingTemp, setLineSpacingTemp] = useState<"Compact" | "Standard" | "Relaxed">("Standard");
+  const [letterSpacingTemp, setLetterSpacingTemp] = useState<"Tight" | "Normal" | "Wide">("Normal");
+  const [speechSpeedTemp, setSpeechSpeedTemp] = useState<string>("1.0x");
+
+  // Applied Reader Preferences
+  const [appliedTextSize, setAppliedTextSize] = useState<"A-" | "A+">("A-");
+  const [appliedTypographyStyle, setAppliedTypographyStyle] = useState<"Times New Roman" | "Modern Sans">("Times New Roman");
+  const [appliedLineSpacing, setAppliedLineSpacing] = useState<"Compact" | "Standard" | "Relaxed">("Standard");
+  const [appliedLetterSpacing, setAppliedLetterSpacing] = useState<"Tight" | "Normal" | "Wide">("Normal");
+  const [appliedSpeechSpeed, setAppliedSpeechSpeed] = useState<string>("1.0x");
+
   useFocusEffect(
     useCallback(() => {
       fetchUserData();
@@ -212,7 +227,6 @@ export default function DyslexicHome() {
 
   const handleScanCard = async () => {
     const { granted } = await requestCameraPermission();
-    console.log("DEBUG camera granted:", granted);
     if (!granted) return;
     setShowCamera(true);
   };
@@ -226,14 +240,11 @@ export default function DyslexicHome() {
       const photo = await cameraRef.current.takePictureAsync({
         base64: false,
       });
-      console.log("DEBUG photo:", photo);
 
       const ip = await resolveServerIp();
-      console.log("DEBUG scan ip:", ip);
       if (!ip || !photo?.uri) throw new Error("Camera or server unavailable");
 
       const ocrResult = await scanFlashcard(ip, photo.uri);
-      console.log("DEBUG ocrResult:", ocrResult);
       if (!ocrResult.word) {
         Alert.alert(
           "Couldn't read a word from that photo — try again with better lighting.",
@@ -306,7 +317,6 @@ export default function DyslexicHome() {
         selectedFile.mimeType === "application/json" ||
         fileName.toLowerCase().endsWith(".json");
 
-      // On web, expo-document-picker exposes the real Blob/File on `.file`.
       const webFile = (selectedFile as any).file as Blob | undefined;
       if (!webFile) {
         setLoading(false);
@@ -317,9 +327,6 @@ export default function DyslexicHome() {
       let parsedPages: ParsedPage[];
 
       if (isJson) {
-        // Read the JSON straight off the Blob — Blob.text() works reliably
-        // on web, unlike expo-file-system's readAsStringAsync, which needs
-        // a real filesystem uri and silently fails on web blob uris.
         let raw: string;
         try {
           raw = await webFile.text();
@@ -371,11 +378,8 @@ export default function DyslexicHome() {
           syllableMap: Array.isArray(p.syllableMap) ? p.syllableMap : [],
         }));
       } else {
-        // Parse entirely in-browser, no backend call at all.
         parsedPages = await parsePdfDocument(webFile);
 
-        // parsePdfDocument swallows internal errors into a fake single page —
-        // surface that instead of silently "succeeding".
         if (
           parsedPages.length === 1 &&
           parsedPages[0].text.startsWith("Parsing error occurred:")
@@ -400,8 +404,6 @@ export default function DyslexicHome() {
     }
   };
 
-  // Splits any word in `sentence` that appears in `syllableMap` into its
-  // syllable form (e.g. "fascinated" -> "fas·ci·nat·ed") for the Split Words toggle.
   const applySyllableSplits = (
     sentence: string,
     syllableMap: ParsedPage["syllableMap"],
@@ -421,6 +423,16 @@ export default function DyslexicHome() {
     setReaderPlaying(false);
   };
 
+  const getSpeechRateMultiplier = (speedStr: string) => {
+    switch (speedStr) {
+      case "0.5x": return 0.5;
+      case "1.0x": return 1.0;
+      case "1.5x": return 1.5;
+      case "2.0x": return 2.0;
+      default: return 1.0;
+    }
+  };
+
   const speakReaderSentence = (index: number) => {
     const page = readerPages[readerPageIdx];
     if (!page || index >= page.sentences.length) {
@@ -433,7 +445,7 @@ export default function DyslexicHome() {
     setReaderPlaying(true);
 
     Speech.speak(page.sentences[index], {
-      rate: 1.0,
+      rate: getSpeechRateMultiplier(appliedSpeechSpeed),
       onDone: () => speakReaderSentence(index + 1),
       onStopped: () => setReaderPlaying(false),
       onError: () => setReaderPlaying(false),
@@ -465,6 +477,30 @@ export default function DyslexicHome() {
   const closeReader = () => {
     stopReaderSpeech();
     setReaderVisible(false);
+  };
+
+  // Helper styles computed dynamically based on applied accessibility preferences
+  const getDynamicReaderSentenceStyle = () => {
+    let fontSize = 16;
+    if (appliedTextSize === "A+") fontSize = 20;
+    if (appliedTextSize === "A-") fontSize = 14;
+
+    let lineHeight = 24;
+    if (appliedLineSpacing === "Compact") lineHeight = 20;
+    if (appliedLineSpacing === "Relaxed") lineHeight = 32;
+
+    let letterSpacing = 0;
+    if (appliedLetterSpacing === "Tight") letterSpacing = -0.5;
+    if (appliedLetterSpacing === "Wide") letterSpacing = 2;
+
+    const fontFamily = appliedTypographyStyle === "Times New Roman" ? "serif" : "sans-serif";
+
+    return {
+      fontSize,
+      lineHeight,
+      letterSpacing,
+      fontFamily,
+    };
   };
 
   if (dbLoading) {
@@ -788,6 +824,7 @@ export default function DyslexicHome() {
                   key={idx}
                   style={[
                     styles.readerSentence,
+                    getDynamicReaderSentenceStyle(),
                     isCurrent && styles.readerSentenceActive,
                   ]}
                 >
@@ -878,12 +915,15 @@ export default function DyslexicHome() {
 
           <Pressable
             style={styles.accessibilityLinkRow}
-            onPress={() =>
-              Alert.alert(
-                "Accessibility Settings",
-                "Font size, spacing, and theme controls go here — hook this up to your existing EasyReadSettingsModal when ready.",
-              )
-            }
+            onPress={() => {
+              // Sync temp state with current applied state when opening modal
+              setTextSizeTemp(appliedTextSize);
+              setTypographyStyleTemp(appliedTypographyStyle);
+              setLineSpacingTemp(appliedLineSpacing);
+              setLetterSpacingTemp(appliedLetterSpacing);
+              setSpeechSpeedTemp(appliedSpeechSpeed);
+              setAccessibilityModalVisible(true);
+            }}
           >
             <Ionicons name="settings-outline" size={14} color="#3B82F6" />
             <Text style={styles.accessibilityLinkText}>
@@ -894,6 +934,123 @@ export default function DyslexicHome() {
           <Pressable style={styles.readerCloseButton} onPress={closeReader}>
             <Ionicons name="close" size={22} color="#64748B" />
           </Pressable>
+        </View>
+      </Modal>
+
+      {/* Visual Adjustments / Accessibility Modal */}
+      <Modal
+        visible={accessibilityModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setAccessibilityModalVisible(false)}
+      >
+        <View style={accessibilityStyles.modalOverlay}>
+          <View style={accessibilityStyles.modalCard}>
+            <Text style={accessibilityStyles.modalMainTitle}>Visual Adjustments</Text>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={accessibilityStyles.modalScroll}>
+              {/* Text Size */}
+              <View style={accessibilityStyles.sectionGroup}>
+                <Text style={accessibilityStyles.sectionLabel}>Text Size ({appliedTextSize === "A+" ? "20px" : appliedTextSize === "A-" ? "14px" : "16px"})</Text>
+                <View style={accessibilityStyles.optionsRow}>
+                  <Pressable
+                    style={[accessibilityStyles.optionPillLarge, textSizeTemp === "A-" && accessibilityStyles.optionPillActive]}
+                    onPress={() => setTextSizeTemp("A-")}
+                  >
+                    <Text style={[accessibilityStyles.optionText, textSizeTemp === "A-" && accessibilityStyles.optionTextActive]}>A-</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[accessibilityStyles.optionPillLarge, textSizeTemp === "A+" && accessibilityStyles.optionPillActive]}
+                    onPress={() => setTextSizeTemp("A+")}
+                  >
+                    <Text style={[accessibilityStyles.optionText, textSizeTemp === "A+" && accessibilityStyles.optionTextActive]}>A+</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              {/* Typography Style */}
+              <View style={accessibilityStyles.sectionGroup}>
+                <Text style={accessibilityStyles.sectionLabel}>Typography Style</Text>
+                <View style={accessibilityStyles.optionsRow}>
+                  <Pressable
+                    style={[accessibilityStyles.optionPillLarge, typographyStyleTemp === "Times New Roman" && accessibilityStyles.optionPillActive]}
+                    onPress={() => setTypographyStyleTemp("Times New Roman")}
+                  >
+                    <Text style={[accessibilityStyles.optionText, typographyStyleTemp === "Times New Roman" && accessibilityStyles.optionTextActive]}>Times New Roman</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[accessibilityStyles.optionPillLarge, typographyStyleTemp === "Modern Sans" && accessibilityStyles.optionPillActive]}
+                    onPress={() => setTypographyStyleTemp("Modern Sans")}
+                  >
+                    <Text style={[accessibilityStyles.optionText, typographyStyleTemp === "Modern Sans" && accessibilityStyles.optionTextActive]}>Modern Sans</Text>
+                  </Pressable>
+                </View>
+              </View>
+
+              {/* Line Spacing */}
+              <View style={accessibilityStyles.sectionGroup}>
+                <Text style={accessibilityStyles.sectionLabel}>Line Spacing</Text>
+                <View style={accessibilityStyles.optionsRowThree}>
+                  {["Compact", "Standard", "Relaxed"].map((item) => (
+                    <Pressable
+                      key={item}
+                      style={[accessibilityStyles.optionPillSmall, lineSpacingTemp === item && accessibilityStyles.optionPillActive]}
+                      onPress={() => setLineSpacingTemp(item as any)}
+                    >
+                      <Text style={[accessibilityStyles.optionText, lineSpacingTemp === item && accessibilityStyles.optionTextActive]}>{item}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {/* Letter Spacing */}
+              <View style={accessibilityStyles.sectionGroup}>
+                <Text style={accessibilityStyles.sectionLabel}>Letter Spacing</Text>
+                <View style={accessibilityStyles.optionsRowThree}>
+                  {["Tight", "Normal", "Wide"].map((item) => (
+                    <Pressable
+                      key={item}
+                      style={[accessibilityStyles.optionPillSmall, letterSpacingTemp === item && accessibilityStyles.optionPillActive]}
+                      onPress={() => setLetterSpacingTemp(item as any)}
+                    >
+                      <Text style={[accessibilityStyles.optionText, letterSpacingTemp === item && accessibilityStyles.optionTextActive]}>{item}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              {/* Speech Speed */}
+              <View style={accessibilityStyles.sectionGroup}>
+                <Text style={accessibilityStyles.sectionLabel}>Speech Speed</Text>
+                <View style={accessibilityStyles.optionsRowFour}>
+                  {["0.5x", "1.0x", "1.5x", "2.0x"].map((item) => (
+                    <Pressable
+                      key={item}
+                      style={[accessibilityStyles.optionPillQuad, speechSpeedTemp === item && accessibilityStyles.optionPillActive]}
+                      onPress={() => setSpeechSpeedTemp(item)}
+                    >
+                      <Text style={[accessibilityStyles.optionText, speechSpeedTemp === item && accessibilityStyles.optionTextActive]}>{item}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+
+            <Pressable
+              style={accessibilityStyles.applyButton}
+              onPress={() => {
+                // Apply temp choices to live reader settings
+                setAppliedTextSize(textSizeTemp);
+                setAppliedTypographyStyle(typographyStyleTemp);
+                setAppliedLineSpacing(lineSpacingTemp);
+                setAppliedLetterSpacing(letterSpacingTemp);
+                setAppliedSpeechSpeed(speechSpeedTemp);
+                setAccessibilityModalVisible(false);
+              }}
+            >
+              <Text style={accessibilityStyles.applyButtonText}>Apply Changes</Text>
+            </Pressable>
+          </View>
         </View>
       </Modal>
 
@@ -1015,20 +1172,19 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   progressPercent: {
-    textAlign: "center",
-    fontSize: 11,
+    fontSize: 12,
     color: "#6b7280",
-    fontWeight: "500",
+    marginBottom: 10,
   },
   bubbleRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 15,
+    marginTop: 5,
   },
   bubble: {
-    width: 35,
-    height: 35,
-    borderRadius: 18,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: "#f3f4f6",
     justifyContent: "center",
     alignItems: "center",
@@ -1042,16 +1198,16 @@ const styles = StyleSheet.create({
     marginTop: 20,
     padding: 20,
     borderRadius: 24,
-    elevation: 2,
+    elevation: 4,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   aiHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    marginBottom: 5,
   },
   aiIconTitle: {
     flexDirection: "row",
@@ -1060,75 +1216,67 @@ const styles = StyleSheet.create({
   aiTitle: {
     fontSize: 16,
     fontWeight: "bold",
-    marginLeft: 5,
     color: "#1e293b",
   },
   aiSubtitle: {
-    fontSize: 12,
-    color: "#9ca3af",
-    marginBottom: 10,
-    marginLeft: 5,
+    fontSize: 13,
+    color: "#6b7280",
+    marginBottom: 15,
   },
   simplificationRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    backgroundColor: "#eff6ff",
-    padding: 10,
-    borderRadius: 12,
-    marginBottom: 10,
+    marginBottom: 15,
   },
   toggleLabelGroup: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 8,
   },
   toggleText: {
     fontSize: 13,
-    fontWeight: "600",
-    color: "#1e40af",
-    marginLeft: 8,
+    fontWeight: "500",
+    color: "#1e293b",
   },
   aiBubble: {
     backgroundColor: "#f8fafc",
     padding: 15,
-    borderRadius: 15,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
   strategyRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 5,
+    marginBottom: 8,
   },
   strategyLabel: {
+    fontSize: 13,
     fontWeight: "bold",
-    fontSize: 12,
     color: "#1e293b",
-    marginLeft: 4,
   },
   aiMessage: {
     fontSize: 13,
-    color: "#4b5563",
+    color: "#475569",
     lineHeight: 18,
   },
   statsWrapper: {
-    width: "100%",
-    marginTop: 25,
+    width: "90%",
+    marginTop: 20,
   },
   statsGrid: {
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    gap: 12,
+    marginBottom: 15,
   },
   newStatCard: {
-    flex: 1,
     backgroundColor: "white",
+    flex: 1,
+    marginHorizontal: 4,
+    padding: 15,
     borderRadius: 16,
-    paddingVertical: 14,
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -1137,29 +1285,24 @@ const styles = StyleSheet.create({
   },
   newStatNumber: {
     fontSize: 16,
-    fontWeight: "700",
-    color: "#3b82f6",
-    marginBottom: 4,
+    fontWeight: "bold",
+    color: "#1e293b",
+    marginVertical: 4,
   },
   newStatLabel: {
     fontSize: 11,
     color: "#6b7280",
-    fontWeight: "500",
-    textAlign: "center",
   },
   actionButtonsSection: {
     flexDirection: "row",
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-    gap: 12,
+    justifyContent: "space-between",
   },
   actionButton: {
-    flex: 1,
     backgroundColor: "white",
+    flex: 1,
+    marginHorizontal: 4,
+    paddingVertical: 12,
     borderRadius: 16,
-    paddingVertical: 16,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
     elevation: 2,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
@@ -1168,13 +1311,12 @@ const styles = StyleSheet.create({
   },
   actionButtonContent: {
     alignItems: "center",
-    justifyContent: "center",
     gap: 6,
   },
   actionButtonLabel: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "600",
-    color: "#1f2937",
+    color: "#1e293b",
   },
   loadingContainer: {
     marginTop: 20,
@@ -1187,91 +1329,73 @@ const styles = StyleSheet.create({
   },
   flashcardContainerCanvas: {
     flex: 1,
-    backgroundColor: "#f0f9ff",
-    alignItems: "center",
-    justifyContent: "center",
+    backgroundColor: "#f8fafc",
     padding: 24,
+    justifyContent: "space-between",
   },
   labHeaderTitle: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#94a3b8",
-    letterSpacing: 2,
-    marginBottom: 20,
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#64748b",
+    letterSpacing: 1,
+    textAlign: "center",
   },
   dyslexiaMainCardBody: {
-    width: "95%",
-    backgroundColor: "white",
-    borderRadius: 28,
-    paddingVertical: 50,
-    paddingHorizontal: 20,
-    alignItems: "center",
+    flex: 1,
     justifyContent: "center",
-    elevation: 4,
-    shadowColor: "#0f172a",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    marginBottom: 35,
+    alignItems: "center",
   },
   syllableRenderingRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
+    gap: 12,
   },
   syllablePillBlock: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 22,
+    borderRadius: 16,
   },
   dyslexiaFontWord: {
-    fontFamily: "OpenDyslexic",
-    fontSize: 34,
-    textAlign: "center",
-    letterSpacing: 1,
+    fontSize: 28,
   },
   flashcardControlPanelActionRow: {
-    width: "95%",
-    gap: 14,
+    gap: 12,
   },
   soundButtonTrigger: {
     backgroundColor: "#2563eb",
     flexDirection: "row",
-    height: 58,
-    borderRadius: 18,
+    height: 50,
+    borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
     gap: 10,
-    elevation: 2,
   },
   soundBtnLabelText: {
     color: "white",
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 15,
+    fontWeight: "600",
   },
   recycleScanButton: {
     backgroundColor: "white",
     flexDirection: "row",
-    height: 54,
-    borderRadius: 18,
+    height: 50,
+    borderRadius: 14,
     justifyContent: "center",
     alignItems: "center",
-    gap: 8,
-    borderWidth: 2,
-    borderColor: "#3b82f6",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
   },
   recycleTextLabel: {
     color: "#3b82f6",
     fontSize: 15,
-    fontWeight: "700",
+    fontWeight: "600",
   },
   dismissLabBtn: {
-    height: 50,
+    height: 44,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 10,
   },
   dismissBtnLabel: {
     color: "#64748b",
@@ -1281,38 +1405,46 @@ const styles = StyleSheet.create({
   readerContainer: {
     flex: 1,
     backgroundColor: "#FFFFFF",
-    paddingTop: 30,
+    paddingTop: 50,
   },
   readerScrollContent: {
-    paddingHorizontal: 24,
-    paddingBottom: 20,
+    padding: 24,
+    paddingBottom: 100,
   },
   readerSentence: {
-    fontSize: 20,
-    lineHeight: 34,
-    color: "#1E293B",
-    marginBottom: 14,
+    color: "#334155",
+    marginBottom: 16,
   },
   readerSentenceActive: {
-    fontWeight: "700",
-    backgroundColor: "#FDE68A",
+    backgroundColor: "#FEF08A",
     color: "#1E293B",
   },
   readerToolbarRow: {
+    position: "absolute",
+    bottom: 30,
+    left: 20,
+    right: 20,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 30,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#E2E8F0",
-    gap: 10,
+    paddingVertical: 12,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
   },
   readerNavButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
   },
   readerNavButtonDisabled: {
     opacity: 0.5,
@@ -1328,53 +1460,153 @@ const styles = StyleSheet.create({
   splitWordsPill: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    backgroundColor: "#F3E8FF",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
+    gap: 6,
   },
   splitWordsPillActive: {
-    backgroundColor: "#EDE9FE",
-    borderColor: "#C4B5FD",
+    backgroundColor: "#E9D5FF",
+    borderWidth: 1,
+    borderColor: "#7C3AED",
   },
   splitWordsText: {
-    fontSize: 13,
-    fontWeight: "700",
+    fontSize: 12,
+    fontWeight: "600",
     color: "#7C3AED",
   },
   readAloudButton: {
-    flex: 1,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
     backgroundColor: "#2563EB",
-    borderRadius: 24,
-    paddingVertical: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    gap: 6,
   },
   readAloudText: {
     color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  accessibilityLinkRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 14,
-  },
-  accessibilityLinkText: {
     fontSize: 13,
     fontWeight: "600",
+  },
+  accessibilityLinkRow: {
+    position: "absolute",
+    bottom: 6,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 4,
+  },
+  accessibilityLinkText: {
+    fontSize: 11,
     color: "#3B82F6",
+    fontWeight: "600",
   },
   readerCloseButton: {
     position: "absolute",
-    top: 12,
-    right: 16,
-    padding: 6,
+    top: 16,
+    right: 20,
+    padding: 8,
+  },
+});
+
+const accessibilityStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    width: "100%",
+    maxWidth: 420,
+    borderRadius: 24,
+    padding: 24,
+    maxHeight: "85%",
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+  },
+  modalMainTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1E293B",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  modalScroll: {
+    paddingBottom: 10,
+  },
+  sectionGroup: {
+    marginBottom: 18,
+  },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#475569",
+    marginBottom: 8,
+  },
+  optionsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  optionsRowThree: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  optionsRowFour: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  optionPillLarge: {
+    flex: 1,
+    backgroundColor: "#F1F5F9",
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  optionPillSmall: {
+    flex: 1,
+    backgroundColor: "#F1F5F9",
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  optionPillQuad: {
+    flex: 1,
+    backgroundColor: "#F1F5F9",
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  optionPillActive: {
+    backgroundColor: "#0066FF",
+  },
+  optionText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#334155",
+  },
+  optionTextActive: {
+    color: "#FFFFFF",
+  },
+  applyButton: {
+    backgroundColor: "#0066FF",
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+    marginTop: 10,
+  },
+  applyButtonText: {
+    color: "#FFFFFF",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

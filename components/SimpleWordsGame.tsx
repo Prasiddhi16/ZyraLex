@@ -10,12 +10,26 @@ type DifficultyLevel = "beginner" | "intermediate" | "advanced";
 interface Props {
   level: DifficultyLevel;
   data: any;
+  // NEW: lets the parent screen resume this game exactly where the user
+  // left off, instead of always restarting at question 1.
+  initialQuestionIndex?: number;
+  // NEW: fired every time a word is completed correctly, so the parent
+  // can persist current progress to the database immediately.
+  onProgress?: (index: number) => void;
   onComplete: () => void;
   onClose: () => void;
 }
 
-export default function SimpleWordsGame({ level, data, onComplete, onClose }: Props) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+export default function SimpleWordsGame({
+  level,
+  data,
+  initialQuestionIndex = 0,
+  onProgress,
+  onComplete,
+  onClose,
+}: Props) {
+  // CHANGED: was useState(0) — now starts from the saved resume point.
+  const [currentIndex, setCurrentIndex] = useState(initialQuestionIndex);
   const [selectedLetters, setSelectedLetters] = useState<string[]>([]);
   const [isWordComplete, setIsWordComplete] = useState(false);
   const [isGameFinished, setIsGameFinished] = useState(false);
@@ -151,7 +165,13 @@ export default function SimpleWordsGame({ level, data, onComplete, onClose }: Pr
 
   const handleNextWord = () => {
     if (currentIndex < totalWords - 1) {
-      setCurrentIndex(prev => prev + 1);
+      const nextIndex = currentIndex + 1;
+      setCurrentIndex(nextIndex);
+      // NEW: persist progress right after a word is finished and we move
+      // on, instead of waiting until the whole game ends.
+      if (onProgress) {
+        onProgress(nextIndex);
+      }
     } else {
       setIsGameFinished(true);
     }

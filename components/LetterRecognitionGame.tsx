@@ -11,12 +11,27 @@ type DifficultyLevel = "beginner" | "intermediate" | "advanced";
 interface Props {
   level: DifficultyLevel;
   data: { letterRecognition: LetterRecognitionQuestion[] };
+  // NEW: lets the parent screen resume this game exactly where the user
+  // left off, instead of always restarting at question 1.
+  initialQuestionIndex?: number;
+  // NEW: fired every time a question is answered correctly, so the parent
+  // can persist current progress to the database immediately (not just
+  // once at the very end via onComplete).
+  onProgress?: (index: number) => void;
   onComplete: () => void;
   onClose: () => void;
 }
 
-export default function LetterRecognitionGame({ level, data, onComplete, onClose }: Props) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+export default function LetterRecognitionGame({
+  level,
+  data,
+  initialQuestionIndex = 0,
+  onProgress,
+  onComplete,
+  onClose,
+}: Props) {
+  // CHANGED: was useState(0) — now starts from the saved resume point.
+  const [currentIndex, setCurrentIndex] = useState(initialQuestionIndex);
   const [score, setScore] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
 
@@ -88,7 +103,13 @@ export default function LetterRecognitionGame({ level, data, onComplete, onClose
     setShowFeedback(false);
     if (isCorrectSelection) {
       if (currentIndex < totalQuestions - 1) {
-        setCurrentIndex(prev => prev + 1);
+        const nextIndex = currentIndex + 1;
+        setCurrentIndex(nextIndex);
+        // NEW: persist progress the moment we move past a correctly
+        // answered question, instead of waiting until the whole game ends.
+        if (onProgress) {
+          onProgress(nextIndex);
+        }
       } else {
         setIsFinished(true);
       }
