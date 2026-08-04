@@ -12,26 +12,40 @@ import { COLORS } from '../constants/colors';
 interface LessonCardProps {
   lesson: Lesson;
   onPress?: (event: GestureResponderEvent) => void;
+  completed?: boolean;
 }
 
-export const PracticeCard: React.FC<LessonCardProps> = ({ lesson, onPress }) => {
-console.log(lesson);
-
+export const PracticeCard: React.FC<LessonCardProps> = ({
+  lesson,
+  onPress,
+  completed = false,
+}) => {
   return (
-    <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
       <View style={styles.content}>
         <Text style={styles.title}>{lesson.title}</Text>
-        <Text style={styles.description}>
-        {lesson.descriptionpractice }
-       </Text>
 
+        <Text style={styles.description}>
+          {lesson.descriptionpractice}
+        </Text>
       </View>
-      <TouchableOpacity style={styles.moreButton}>
-        <Text style={styles.moreButtonText}>•••</Text>
-      </TouchableOpacity>
+
+      <View
+        style={[
+          styles.moreButton,
+          completed && styles.completedButton,
+        ]}
+      >
+        <Text style={styles.moreButtonText}>
+          {completed ? "✓" : "•••"}
+        </Text>
+      </View>
     </TouchableOpacity>
   );
-  
 };
 
 const styles = StyleSheet.create({
@@ -46,33 +60,25 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+
   content: {
     flex: 1,
     marginRight: 12,
   },
+
   title: {
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.darkGray,
     marginBottom: 4,
   },
+
   description: {
     fontSize: 13,
     color: COLORS.darkGray,
     marginBottom: 10,
   },
-  footer: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  infoLabel: {
-    fontSize: 12,
-    color: COLORS.darkGray,
-  },
+
   moreButton: {
     width: 40,
     height: 40,
@@ -81,6 +87,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+
+  completedButton: {
+    backgroundColor: '#28A745',
+  },
+
   moreButtonText: {
     color: COLORS.white,
     fontSize: 18,

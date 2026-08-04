@@ -1,16 +1,23 @@
 // services/voice.ts
 
-interface SpeechConfig {
-  targetText: string;
-  onTranscriptUpdate: (text: string) => void;
-  onComplete: (result: EvaluationResult) => void;
-}
-
 export type EvaluationResult =
   | "well_done"
   | "rushed"
   | "keep_trying"
   | "no_speech";
+
+export interface SpeechConfig {
+  targetText: string;
+  onTranscriptUpdate: (text: string) => void;
+  onComplete: (result: EvaluationResult) => void;
+}
+
+export interface StopListeningResult {
+  result: EvaluationResult;
+  transcript: string;
+  correctWords: string[];
+  accuracy: number; // 0–100
+}
 
 // Keep track of the active instance and transcript
 let recognitionInstance: any = null;
@@ -21,6 +28,7 @@ export const startListening = (config: SpeechConfig) => {
 
   const SpeechRecognition =
     (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
   if (!SpeechRecognition) {
     console.error("Speech recognition not supported in this browser.");
     return;
@@ -65,7 +73,13 @@ export const startListening = (config: SpeechConfig) => {
   recognitionInstance.start();
 };
 
-export const stopListening = (targetText: string): EvaluationResult => {
+const cleanString = (str: string) =>
+  str
+    .toLowerCase()
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+    .trim();
+
+export const stopListening = (targetText: string): StopListeningResult => {
   if (recognitionInstance) {
     try {
       recognitionInstance.stop();
@@ -74,35 +88,34 @@ export const stopListening = (targetText: string): EvaluationResult => {
     }
   }
 
-  const cleanString = (str: string) =>
-    str
-      .toLowerCase()
-      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
-      .trim();
-
   const targetWords = cleanString(targetText).split(/\s+/).filter(Boolean);
   const spokenWords = cleanString(accumulatedTranscript).split(/\s+/).filter(Boolean);
 
-  // Case 1: No speech detected
+  const correctWords = targetWords.filter((w) => spokenWords.includes(w));
+  const accuracy = targetWords.length
+    ? Math.round((correctWords.length / targetWords.length) * 100)
+    : 0;
+
+  let result: EvaluationResult;
+
   if (spokenWords.length === 0) {
-    return "no_speech";
-  }
-
-  // Case 2: Perfect strict sequence match
-  const isExactMatch =
+    // Case 1: No speech detected
+    result = "no_speech";
+  } else if (
     spokenWords.length === targetWords.length &&
-    targetWords.every((word, i) => spokenWords[i] === word);
-
-  if (isExactMatch) {
-    return "well_done";
+    targetWords.every((word, i) => spokenWords[i] === word)
+  ) {
+    // Case 2: Perfect strict sequence match
+    result = "well_done";
+  } else if (correctWords.length > 0) {
+    // Case 3: Some words matched but sequence/coverage broken
+    result = "keep_trying";
+  } else {
+    // Case 4: No words matched at all
+    result = "rushed";
   }
 
-  // Case 3: Some words matched but sequence broken
-  const someMatch = targetWords.some((word, i) => spokenWords[i] === word);
-  if (someMatch) {
-    return "keep_trying";
-  }
+  const transcript = accumulatedTranscript.trim();
 
-  // Case 4: No words matched at all
-  return "rushed";
+  return { result, transcript, correctWords, accuracy };
 };

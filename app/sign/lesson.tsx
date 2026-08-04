@@ -4,6 +4,7 @@ import { useSignModule } from '@/hooks/useSignModule';
 import { recordLessonCompletion } from '@/lib/queries/signModule';
 import { supabase } from '@/lib/supabase';
 import { Lesson, Level, SignItem } from '@/types/lesson';
+import { useLearningTimeTracker } from '@/utils/useLearningTimeTracker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { ActivityIndicator, Alert, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -60,14 +61,19 @@ interface Props {
 }
 
 function LessonInner({ levelId, lessonId, onRetake, levels, lessonMap }: Props) {
+  useLearningTimeTracker("sign");
+
   const router = useRouter();
   const lessonData = lessonMap[`${levelId}_${lessonId}`];
 
-  const [phase, setPhase]   = useState<Phase>({ name: 'teach', signIndex: 0 });
-  const [score, setScore]   = useState(0);
+  const [phase, setPhase] = useState<Phase>({
+    name: 'teach',
+    signIndex: 0,
+  });
+
+  const [score, setScore] = useState(0);
   const [totalQ, setTotalQ] = useState(0);
   const [mascot, setMascot] = useState<MascotState>(HIDDEN_MASCOT);
-
   if (!lessonData) {
     return (
       <View style={styles.safe}>

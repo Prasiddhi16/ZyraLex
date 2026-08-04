@@ -45,10 +45,10 @@ export default function SignGames() {
           </Link>
 
           {/* ✍️ Spelling */}
-          <Link href="/game/spelling" asChild>
+          <Link href="/game/crossword" asChild>
             <TouchableOpacity style={styles.baseButton}>
               <LinearGradient colors={["#ff9a9e", "#fad0c4"]} style={styles.cardRowReverse}>
-                <Text style={styles.buttonText}>Spelling Bee</Text>
+                <Text style={styles.buttonText}>Crossword</Text>
                 <Image source={require("../../assets/mimo4.png")} style={styles.icon} resizeMode="contain" />
               </LinearGradient>
             </TouchableOpacity>

@@ -1,30 +1,107 @@
-import { useSignModule } from '@/hooks/useSignModule';
-import { useLocalSearchParams } from 'expo-router';
-import React from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { FlashCollapsible } from '../../components/Flashcollaspible';
-import { COLORS } from '../../constants/colors';
+import { useSignModule } from "@/hooks/useSignModule";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  useFocusEffect,
+  useNavigation,
+} from "expo-router";
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+
+import { FlashCollapsible } from "../../components/Flashcollaspible";
+import { COLORS } from "../../constants/colors";
 
 export default function FlashPracticeScreen() {
-  const { lessonId, levelId } = useLocalSearchParams<{ lessonId?: string; levelId?: string }>();
-  const{ levels, loading, error } = useSignModule();
-  if (loading) return <ActivityIndicator style={{ marginTop:40 }} />;
-  if (error) return <Text style={{ margin:16 }}> {error} </Text>
-  
+  const { levels, loading, error, refetch } =
+    useSignModule();
+
+  const navigation = useNavigation();
+
+  const [completedLevels, setCompletedLevels] =
+    useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener(
+      "focus",
+      () => {
+        refetch();
+      }
+    );
+
+    return unsubscribe;
+  }, [navigation, refetch]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const loadCompletedLevels = async () => {
+        const status: Record<string, boolean> = {};
+
+        await Promise.all(
+          levels.map(async (level) => {
+            const value =
+              await AsyncStorage.getItem(
+                `flash_level_${level.levelId}_completed`
+              );
+
+            status[level.levelId] =
+              value === "true";
+          })
+        );
+
+        setCompletedLevels(status);
+      };
+
+      loadCompletedLevels();
+    }, [levels])
+  );
+
+  if (loading) {
+    return (
+      <ActivityIndicator style={{ marginTop: 40 }} />
+    );
+  }
+
+  if (error) {
+    return <Text style={{ margin: 16 }}>{error}</Text>;
+  }
+
   return (
-    <ScrollView style={{ flex: 1 ,backgroundColor: COLORS.white,}}>
-     <View style={styles.sectionHeader}>
-       <Text style={styles.sectionTitle}>Flash Card Sessions </Text>
+    <ScrollView style={{ flex: 1, backgroundColor: COLORS.white }}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Flash Card Sessions</Text>
       </View>
-     
-    <View style={styles.lessonsContainer}>
-      {levels.map((lvl) => (
-        <FlashCollapsible key={lvl.levelId} level={lvl} />
-      ))}
-    </View>
+
+      <View style={styles.lessonsContainer}>
+       {levels.map((level, index) => {
+  const previousLevel = levels[index - 1];
+
+  const locked =
+    index > 0 &&
+    !completedLevels[previousLevel.levelId];
+
+  return (
+    <FlashCollapsible
+      key={level.levelId}
+      level={level}
+      locked={locked}
+    />
+  );
+})}
+
+      </View>
     </ScrollView>
   );
 }
+
 const styles = StyleSheet.create({
   lessonsContainer: {
     paddingHorizontal: 16,
@@ -33,13 +110,11 @@ const styles = StyleSheet.create({
   sectionHeader: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-  marginBottom:20,
+    marginBottom: 20,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: COLORS.primary,
-   
-
   },
 });

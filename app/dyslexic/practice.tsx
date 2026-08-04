@@ -1,31 +1,19 @@
 import {
   ArrowLeft,
-  BarChart3,
   BookOpen,
+  Check,
   ChevronRight,
-  Eye,
   Flame,
+  Lock,
   Mic,
-  Pause,
-  PawPrint,
   PenLine,
-  Play,
-  Rocket,
-  RotateCcw,
-  Settings,
   Sprout,
-  Target,
   Type,
-  Wrench,
-  XCircle,
-  CheckCircle2,
-  Zap,
+  Zap
 } from "lucide-react-native";
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  Alert,
   Dimensions,
-  Modal,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -37,35 +25,95 @@ import {
 import LetterRecognitionGame from "../../components/LetterRecognitionGame";
 import SimpleWordsGame from "../../components/SimpleWordsGame";
 import SyllableBasicsGame from "../../components/SyllableBasicsGame";
+import ProgressBar from "../../components/practice/ProgressBar";
 import ReadAloudModule from "../../components/practice/ReadAloudModule";
 import { useAppProgress } from "../../hooks/useAppProgress";
-
-// Structural Modular Connections
-import { CameraPreview } from "../../components/CameraPreview";
-import { useGazeTracking } from "../../hooks/useGazeTracking";
-
+import { stopSpeech } from "../../services/speech";
+import { EvaluationResult } from "../../services/voice";
+import { LEARN_LEVEL_KEYS } from "../../utils/constants";
 // Central matched 3-level data matrices
 import { practiceDataMatrix as PRACTICE_DATA_MATRIX } from "../../data/practice";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 type DifficultyLevel = "beginner" | "intermediate" | "advanced";
 
+// -----------------------------------------------------------------------------
+// NEW: pulled out of the old selectedLevelData useMemo so it can be reused
+// for ALL THREE levels (needed to compute the combined 4-module total for
+// each difficulty card, not just the currently active level).
+// -----------------------------------------------------------------------------
+const resolveLevelModules = (rawLevelRoot: any) => {
+  if (!rawLevelRoot) {
+    return { simpleWords: [], syllableBasics: [], letterRecognition: [], readAloud: [] };
+  }
+
+  const searchTargets = [
+    rawLevelRoot.lessons,
+    rawLevelRoot.lessonPractice,
+    rawLevelRoot.BEGINNER_LESSON_DATA,
+    rawLevelRoot.INTERMEDIATE_LESSON_DATA,
+    rawLevelRoot.ADVANCED_LESSON_DATA,
+    rawLevelRoot.default,
+    rawLevelRoot,
+  ];
+
+  let finalSimpleWords: any[] = [];
+  let finalSyllableBasics: any[] = [];
+  let finalLetterRec: any[] = [];
+
+  for (const target of searchTargets) {
+    if (target) {
+      if (Array.isArray(target.simpleWords) && target.simpleWords.length > 0) {
+        finalSimpleWords = target.simpleWords;
+      }
+      if (Array.isArray(target.syllableBasics) && target.syllableBasics.length > 0) {
+        finalSyllableBasics = target.syllableBasics;
+      }
+      if (Array.isArray(target.letterRecognition) && target.letterRecognition.length > 0) {
+        finalLetterRec = target.letterRecognition;
+      }
+    }
+  }
+
+  if (finalSimpleWords.length === 0 && rawLevelRoot.lessons) {
+    const nested = rawLevelRoot.lessons;
+    finalSimpleWords = nested?.simpleWords || [];
+    finalSyllableBasics = nested?.syllableBasics || [];
+    finalLetterRec = nested?.letterRecognition || [];
+  }
+
+  const readAloud = rawLevelRoot.readAloud || [];
+
+  return {
+    simpleWords: finalSimpleWords,
+    syllableBasics: finalSyllableBasics,
+    letterRecognition: finalLetterRec,
+    readAloud,
+  };
+};
+
 export default function DyslexicPractice() {
   const {
     currentLevel,
     setCurrentLevel,
-    currentFeatureStep,
     isLearnGatePassed,
-    advanceToNextFeature,
-    wordsCompletedCount,
-    debugCompleteLearnModule,
+    getLockMessage,
+    updatePracticeProgress, 
+    practiceProgress,       
+    lessonCompletions,      
+    refreshProgress,
+    getPracticeProgress,
+    getLevelCompletedCount,
+    isLearnLevelComplete,
   } = useAppProgress();
+
+  // Backward compatibility alias so existing references to learnStatus won't crash
+  const learnStatus = lessonCompletions;
 
   const [wordIndex, setWordIndex] = useState(0);
   const [spokenText, setSpokenText] = useState("");
-  const [selectedLetter, setSelectedLetter] = useState<string | null>(null);
-  const [phonicPlaying, setPhonicPlaying] = useState(false);
-  const [lockHint, setLockHint] = useState("");
+  const [isSentenceCorrect, setIsSentenceCorrect] = useState(false);
+  const [lastAccuracy, setLastAccuracy] = useState(0);
 
   const [mimoFeedback, setMimoFeedback] = useState<{
     title: string;
@@ -76,31 +124,6 @@ export default function DyslexicPractice() {
   } | null>(null);
   const [activeLessonGame, setActiveLessonGame] = useState<string | null>(null);
 
-  // Phonics Continuous Real-Time Tracking States
-  const [phonicsIndex, setPhonicsIndex] = useState(0);
-  const [activeChunkIndex, setActiveChunkIndex] = useState(0);
-  const [isReadingActive, setIsReadingActive] = useState(false);
-  const [reportModalVisible, setReportModalVisible] = useState(false);
-  const [evaluationData, setEvaluationData] = useState<{
-    finalScore: number;
-    feedback: string;
-  } | null>(null);
-
-  // Real-Time Interaction Feedback Banners
-  const [phonicsValidationMsg, setPhonicsValidationMsg] = useState<{
-    text: string;
-    isCorrect: boolean;
-  } | null>(null);
-
-  const {
-    metrics,
-    handleFaceDetected,
-    getEvaluationReport,
-    resetSession,
-    isCameraActive,
-    setIsCameraActive,
-  } = useGazeTracking();
-
   const activeLevelKey: DifficultyLevel =
     currentLevel === "intermediate" ||
     currentLevel === "advanced" ||
@@ -110,71 +133,37 @@ export default function DyslexicPractice() {
 
   const rawLevelRoot = PRACTICE_DATA_MATRIX[activeLevelKey];
 
+  // UPDATED: now just calls the shared helper instead of duplicating the
+  // search-target logic inline.
   const selectedLevelData = useMemo(() => {
     if (!rawLevelRoot) return null;
-
-    const searchTargets = [
-      (rawLevelRoot as any).lessons,
-      (rawLevelRoot as any).lessonPractice,
-      (rawLevelRoot as any).BEGINNER_LESSON_DATA,
-      (rawLevelRoot as any).INTERMEDIATE_LESSON_DATA,
-      (rawLevelRoot as any).ADVANCED_LESSON_DATA,
-      (rawLevelRoot as any).default,
-      rawLevelRoot,
-    ];
-
-    let finalSimpleWords: any[] = [];
-    let finalSyllableBasics: any[] = [];
-    let finalLetterRec: any[] = [];
-
-    for (const target of searchTargets) {
-      if (target) {
-        if (
-          Array.isArray(target.simpleWords) &&
-          target.simpleWords.length > 0
-        ) {
-          finalSimpleWords = target.simpleWords;
-        }
-        if (
-          Array.isArray(target.syllableBasics) &&
-          target.syllableBasics.length > 0
-        ) {
-          finalSyllableBasics = target.syllableBasics;
-        }
-        if (
-          Array.isArray(target.letterRecognition) &&
-          target.letterRecognition.length > 0
-        ) {
-          finalLetterRec = target.letterRecognition;
-        }
-      }
-    }
-
-    if (finalSimpleWords.length === 0 && (rawLevelRoot as any).lessons) {
-      const nested = (rawLevelRoot as any).lessons;
-      finalSimpleWords = nested?.simpleWords || [];
-      finalSyllableBasics = nested?.syllableBasics || [];
-      finalLetterRec = nested?.letterRecognition || [];
-    }
-
+    const modules = resolveLevelModules(rawLevelRoot);
     return {
       ...rawLevelRoot,
-      simpleWords: finalSimpleWords,
-      syllableBasics: finalSyllableBasics,
-      letterRecognition: finalLetterRec,
+      ...modules,
     };
-  }, [rawLevelRoot, activeLevelKey]);
+  }, [rawLevelRoot]);
 
   useEffect(() => {
-    setWordIndex(0);
-    setPhonicsIndex(0);
-    setActiveChunkIndex(0);
     setSpokenText("");
+    setIsSentenceCorrect(false);
+    setLastAccuracy(0);
     setMimoFeedback(null);
-    setPhonicsValidationMsg(null);
-    setIsCameraActive(false);
-    setIsReadingActive(false);
-  }, [currentLevel]);
+  }, [currentLevel, activeLessonGame]);
+
+  useEffect(() => {
+    const total = selectedLevelData?.readAloud?.length || 0;
+    const readAloudRecord = getPracticeProgress(activeLevelKey, "Read Aloud");
+    const resumeIndex = total > 0 ? Math.min((readAloudRecord.current_question || 1) - 1, total - 1) : 0;
+    setWordIndex(resumeIndex);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLevel, activeLevelKey, selectedLevelData]);
+
+  useEffect(() => {
+    if (!activeLessonGame) {
+      stopSpeech();
+    }
+  }, [activeLessonGame]);
 
   const totalReadAloudItems = selectedLevelData?.readAloud?.length || 0;
   const safeWordIndex = wordIndex < totalReadAloudItems ? wordIndex : 0;
@@ -183,48 +172,66 @@ export default function DyslexicPractice() {
   };
   const currentWord = currentEntry.sentence;
 
-  const totalPhonicsItems = selectedLevelData?.phonics?.length || 0;
-  const safePhonicsIndex = phonicsIndex < totalPhonicsItems ? phonicsIndex : 0;
-  const activePhonics = selectedLevelData?.phonics?.[safePhonicsIndex] || {
-    word: "",
-    phonemes: [],
-    sounds: [],
-  };
-  const currentPhonemes = activePhonics.phonemes || [];
-
   const totalSessionSteps = useMemo(() => {
-    return totalReadAloudItems + totalPhonicsItems;
-  }, [totalReadAloudItems, totalPhonicsItems]);
+    return totalReadAloudItems;
+  }, [totalReadAloudItems]);
+  
+   
+  // 1. When loading the screen, fetch where the user left off:
+const currentLevelName = "beginner"; // or dynamic state
+const practiceModuleName = "letter_recognition"; // matches PRACTICE_MODULE_TYPES
 
-  const DIFFICULTIES = useMemo(
-    () => [
-      {
-        id: "beginner" as const,
-        label: "Beginner",
-        icon: Sprout,
-        words:
-          PRACTICE_DATA_MATRIX.beginner?.readAloud?.length +
-            PRACTICE_DATA_MATRIX.beginner?.phonics?.length || 20,
-      },
-      {
-        id: "intermediate" as const,
-        label: "Intermed.",
-        icon: Flame,
-        words:
-          PRACTICE_DATA_MATRIX.intermediate?.readAloud?.length +
-            PRACTICE_DATA_MATRIX.intermediate?.phonics?.length || 30,
-      },
-      {
-        id: "advanced" as const,
-        label: "Advanced",
-        icon: Zap,
-        words:
-          PRACTICE_DATA_MATRIX.advanced?.readAloud?.length +
-            PRACTICE_DATA_MATRIX.advanced?.phonics?.length || 40,
-      },
-    ],
-    [],
+const savedProgress = getPracticeProgress(currentLevelName, practiceModuleName);
+const [currentIndex, setCurrentIndex] = useState(savedProgress.current_question - 1);
+
+// 2. Whenever the user moves to the next question, save progress immediately:
+const handleNextQuestion = async (nextIndex: number, isCompleted: boolean) => {
+  setCurrentIndex(nextIndex);
+  
+  // Save to Supabase + local hook state via upsert
+  await updatePracticeProgress(
+    currentLevelName,
+    practiceModuleName,
+    nextIndex + 1, // Store 1-based question number
+    isCompleted,
+    currentScore
   );
+};
+
+  // -----------------------------------------------------------------------------
+  // UPDATED: `words` is now the SUM of all 4 modules (Letter Recognition +
+  // Simple Words + Phonics Basics + Read Aloud) for that level, not just
+  // readAloud.length. This is what makes the card show e.g. 0/80 instead of
+  // 0/20, and lets the percentage reflect true overall level completion.
+  // -----------------------------------------------------------------------------
+  const DIFFICULTIES = useMemo(() => {
+    const buildLevelMeta = (
+      id: "beginner" | "intermediate" | "advanced",
+      label: string,
+      icon: any,
+      fallbackTotal: number
+    ) => {
+      const modules = resolveLevelModules(PRACTICE_DATA_MATRIX[id]);
+      const totalQuestions =
+        modules.letterRecognition.length +
+        modules.simpleWords.length +
+        modules.syllableBasics.length +
+        modules.readAloud.length;
+
+      return {
+        id,
+        label,
+        icon,
+        words: totalQuestions > 0 ? totalQuestions : fallbackTotal,
+      };
+    };
+
+    return [
+      buildLevelMeta("beginner", "Beginner", Sprout, 80),       // 20 x 4 modules
+      buildLevelMeta("intermediate", "Intermediate", Flame, 120), // 30 x 4 modules
+      buildLevelMeta("advanced", "Advanced", Zap, 160),           // 40 x 4 modules
+    ];
+  }, []);
 
   const LESSON_ITEMS = useMemo(
     () => [
@@ -245,12 +252,20 @@ export default function DyslexicPractice() {
         bg: "#FDF4FF",
       },
       {
-        id: "SYLLABLE_BASICS",
-        icon: Mic,
+        id: "PHONICS_BASICS",
+        icon: BookOpen,
         iconColor: "#16A34A",
-        name: "Syllable Basics",
+        name: "Phonics Basics",
         meta: "Break down vocal sound rhythms",
         bg: "#F0FFF4",
+      },
+      {
+        id: "READ_ALOUD",
+        icon: Mic,
+        iconColor: "#0891B2",
+        name: "Read Aloud",
+        meta: "Practice reading full sentences",
+        bg: "#ECFEFF",
       },
     ],
     [],
@@ -260,548 +275,285 @@ export default function DyslexicPractice() {
     return DIFFICULTIES.find((d) => d.id === activeLevelKey) || DIFFICULTIES[0];
   }, [DIFFICULTIES, activeLevelKey]);
 
+  const learnLevelsCompletedCount = useMemo(
+    () => LEARN_LEVEL_KEYS.filter((key) => isLearnLevelComplete(key)).length,
+    [isLearnLevelComplete]
+  );
+
   const handleSelectDifficulty = (diff: (typeof DIFFICULTIES)[0]) => {
+    if (!isLearnGatePassed(diff.id)) return;
     setCurrentLevel(diff.id);
-    // setLockHint("");
   };
 
   const handleFeatureRowPress = (featureId: string) => {
+    if (!isLearnGatePassed(activeLevelKey)) return;
     setActiveLessonGame(featureId);
   };
+  
 
-  const handleGameComplete = () => {
-    setActiveLessonGame(null);
-    advanceToNextFeature();
-  };
+// To this:
+const handleGameComplete = () => {
+  let practiceTypeStr = "Letter Recognition";
+  if (activeLessonGame === "SIMPLE_WORDS") practiceTypeStr = "Simple Words";
+  if (activeLessonGame === "PHONICS_BASICS") practiceTypeStr = "Phonics Basics";
+  if (activeLessonGame === "READ_ALOUD") practiceTypeStr = "Read Aloud";
+
+  // NEW: onComplete only ever fires once every question in the module has
+  // been answered, so the true "finished" question count is the module's
+  // actual length — not a guess derived from whatever current_question was
+  // when the screen was opened.
+  const moduleLength =
+    (selectedLevelData?.letterRecognition?.length && practiceTypeStr === "Letter Recognition"
+      ? selectedLevelData.letterRecognition.length
+      : practiceTypeStr === "Simple Words"
+      ? selectedLevelData?.simpleWords?.length || 0
+      : practiceTypeStr === "Phonics Basics"
+      ? selectedLevelData?.syllableBasics?.length || 0
+      : selectedLevelData?.readAloud?.length || 0) || 0;
+
+  // NEW: read progress fresh right now instead of trusting a value that
+  // may have been captured before the game session started.
+  const currentRecord = getPracticeProgress(activeLevelKey, practiceTypeStr);
+
+  updatePracticeProgress(
+    activeLevelKey,
+    practiceTypeStr,
+    moduleLength + 1,
+    true,
+    currentRecord.score
+  );
+
+  setActiveLessonGame(null);
+};
 
   const goToNextWord = () => {
     if (totalReadAloudItems === 0) return;
-    setWordIndex((prev) => (prev < totalReadAloudItems - 1 ? prev + 1 : 0));
+    const nextIndex = wordIndex < totalReadAloudItems - 1 ? wordIndex + 1 : 0;
+    setWordIndex(nextIndex);
+    
+    updatePracticeProgress(
+      activeLevelKey,
+      "Read Aloud",
+      nextIndex + 1,
+      nextIndex === 0,
+      lastAccuracy
+    );
+
     setSpokenText("");
+    setIsSentenceCorrect(false);
+    setLastAccuracy(0);
     setMimoFeedback(null);
   };
 
-  const goToNextPhonicsWord = () => {
-    setActiveChunkIndex(0);
-    setPhonicsValidationMsg(null);
-    if (totalPhonicsItems === 0) return;
-    if (phonicsIndex < totalPhonicsItems - 1) {
-      setPhonicsIndex((p) => p + 1);
-    } else {
-      setPhonicsIndex(0);
-      setIsCameraActive(false);
-      setIsReadingActive(false);
-      Alert.alert(
-        "Awesome Work!",
-        "You've successfully finished this matching session.",
-      );
-    }
+  const clearFeedbackForRetry = () => {
+    setSpokenText("");
+    setIsSentenceCorrect(false);
+    setLastAccuracy(0);
+    setMimoFeedback(null);
   };
 
-  const handleStopAndEvaluate = () => {
-    const report = getEvaluationReport();
-    setEvaluationData(report);
-    setReportModalVisible(true);
-  };
-
-  const handleCloseReport = () => {
-    setReportModalVisible(false);
-    resetSession();
-  };
-
-  const handleOpenCameraFlow = () => {
-    setIsCameraActive(true);
-    setIsReadingActive(true);
-    setPhonicsValidationMsg(null);
-    setActiveChunkIndex(0);
-  };
-
-  // Real-time phoneme step validation engine
-  const handleVerifyPhonemeSpeechInput = (simulatedSound: string) => {
-    if (!isCameraActive || !isReadingActive) return;
-
-    if (!metrics.isLookingAtScreen) {
-      setPhonicsValidationMsg({
-        text: "Try again! Look closely at the letters on screen.",
-        isCorrect: false,
-      });
-      return;
-    }
-
-    const expectedSound = (activePhonics.sounds?.[activeChunkIndex] || "")
+  const cleanWordString = (str: string) =>
+    str
       .toLowerCase()
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
       .trim();
-    const cleanInput = simulatedSound.toLowerCase().trim();
-
-    if (cleanInput === expectedSound || cleanInput === "correct") {
-      setPhonicsValidationMsg({
-        text: `Excellent! "${currentPhonemes[activeChunkIndex]?.toUpperCase()}" is correct.`,
-        isCorrect: true,
-      });
-
-      // Advance chunk inline loop step
-      setTimeout(() => {
-        setPhonicsValidationMsg(null);
-        if (activeChunkIndex < currentPhonemes.length - 1) {
-          setActiveChunkIndex((p) => p + 1);
-        } else {
-          // Word complete!
-          goToNextPhonicsWord();
-        }
-      }, 1200);
-    } else {
-      setPhonicsValidationMsg({
-        text: `Try again. Listen carefully to the "${currentPhonemes[activeChunkIndex]?.toUpperCase()}" sound.`,
-        isCorrect: false,
-      });
-    }
-  };
 
   const handleProcessMimoSpeech = (
-  outcome: "well_done" | "keep_trying" | "rushed" | "no_speech",
-) => {
-  if (!currentWord) return;
-  setSpokenText(currentWord);
+    outcome: EvaluationResult,
+    transcript: string,
+    accuracy: number
+  ) => {
+    if (!currentWord) return;
 
-  if (outcome === "well_done") {
-    setMimoFeedback({
-      title: "Well done!",
-      message: `You said "${currentWord.toUpperCase()}" perfectly! Mimo is super proud of you.`,
-      borderColor: "#15803D",
-      textColor: "#15803D",
-      bgColor: "#DCFCE7",
-    });
+    setSpokenText(transcript);
+    setLastAccuracy(accuracy);
 
-    if (typeof advanceToNextFeature === "function") {
-      advanceToNextFeature();
+    if (outcome === "well_done") {
+      setIsSentenceCorrect(true);
+      setMimoFeedback({
+        title: "Well done!",
+        message: `You said "${currentWord.toUpperCase()}" perfectly! Mimo is super proud of you.`,
+        borderColor: "#15803D",
+        textColor: "#15803D",
+        bgColor: "#DCFCE7",
+      });
+
+      updatePracticeProgress(
+        activeLevelKey,
+        "Read Aloud",
+        wordIndex + 1,
+        true,
+        accuracy
+      );
+    } else {
+      setIsSentenceCorrect(false);
+
+      if (outcome === "keep_trying") {
+        setMimoFeedback({
+          title: "Keep trying!",
+          message: `You got ${accuracy}% of the words right. Let's try saying it again together.`,
+          borderColor: "#B45309",
+          textColor: "#B45309",
+          bgColor: "#FEF3C7",
+        });
+      } else if (outcome === "rushed") {
+        setMimoFeedback({
+          title: "Oops!",
+          message: "The words didn't match. Let's try again carefully.",
+          borderColor: "#B91C1C",
+          textColor: "#B91C1C",
+          bgColor: "#FEE2E2",
+        });
+      } else if (outcome === "no_speech") {
+        setMimoFeedback({
+          title: "Please speak first",
+          message: "We didn't hear anything. Try saying the word aloud!",
+          borderColor: "#6B7280",
+          textColor: "#6B7280",
+          bgColor: "#E5E7EB",
+        });
+      }
     }
-  } else if (outcome === "keep_trying") {
-    setMimoFeedback({
-      title: "Keep trying!",
-      message:
-        "So close! Let's try to say the words one more time together.",
-      borderColor: "#B45309",
-      textColor: "#B45309",
-      bgColor: "#FEF3C7",
-    });
-  } else if (outcome === "rushed") {
-    setMimoFeedback({
-      title: "Oops!",
-      message:
-        "The words didn’t match. Let’s try again carefully.",
-      borderColor: "#B91C1C",
-      textColor: "#B91C1C",
-      bgColor: "#FEE2E2",
-    });
-  } else if (outcome === "no_speech") {
-    setMimoFeedback({
-      title: "Please speak first",
-      message:
-        "We didn’t hear anything. Try saying the word aloud!",
-      borderColor: "#6B7280",
-      textColor: "#6B7280",
-      bgColor: "#E5E7EB",
-    });
-  }
-};
+  };
 
+  const renderDyslexiaTrackedSentence = () => {
+    if (!currentWord) return null;
+    const originalWordsArray = currentWord.split(/\s+/);
+    const spokenCleanedArray = cleanWordString(spokenText).split(/\s+/).filter(Boolean);
+
+    return (
+      <View style={customStyles.trackedContainer}>
+        {originalWordsArray.map((w: string, i: number) => {
+          const cleanedTarget = cleanWordString(w);
+          const hasSpokenCorrectly = spokenCleanedArray.includes(cleanedTarget);
+
+          return (
+            <Text
+              key={i}
+              style={[
+                customStyles.baseWordText,
+                hasSpokenCorrectly ? customStyles.wordCorrect : customStyles.wordMissed,
+              ]}
+            >
+              {w}{" "}
+            </Text>
+          );
+        })}
+      </View>
+    );
+  };
 
   if (activeLessonGame === "LETTER_RECOGNITION") {
-    return (
-      <LetterRecognitionGame
-        level={activeLevelKey}
-        data={selectedLevelData as any}
-        onComplete={handleGameComplete}
-        onClose={() => setActiveLessonGame(null)}
-      />
-    );
-  }
+    const letterRecProgress = getPracticeProgress(activeLevelKey, "Letter Recognition");
+    // TODO: LetterRecognitionGame's Props type doesn't declare
+    // initialQuestionIndex / onProgress yet, so we pass them through an
+    // `as any` bridge below to avoid a TS2322 build error. Once
+    // LetterRecognitionGame.tsx is updated to accept these two props
+    // (resume index + per-question progress callback), this can become a
+    // normal typed prop and the cast can be removed.
+    // LETTER_RECOGNITION block — change this:
+const letterRecResumeProps: any = {
+  initialQuestionIndex: Math.max((letterRecProgress.current_question || 1) - 1, 0),
+  onProgress: (questionIndex: number) =>
+    updatePracticeProgress(
+      activeLevelKey,
+      "Letter Recognition",
+      questionIndex + 1,
+      false,
+      letterRecProgress.score
+    ),
+};
+return (
+  <LetterRecognitionGame
+    level={activeLevelKey}
+    data={selectedLevelData as any}
+    {...letterRecResumeProps}
+    onComplete={handleGameComplete}
+    onClose={() => setActiveLessonGame(null)}
+  />
+);
+
+}
 
   if (activeLessonGame === "SIMPLE_WORDS") {
+    const simpleWordsProgress = getPracticeProgress(activeLevelKey, "Simple Words");
+    // TODO: same as the note above — SimpleWordsGame's Props type doesn't
+    // declare these two yet, so pass through an `as any` bridge for now.
+    const simpleWordsResumeProps: any = {
+      initialQuestionIndex: Math.max((simpleWordsProgress.current_question || 1) - 1, 0),
+      onProgress: (questionIndex: number) =>
+        updatePracticeProgress(
+          activeLevelKey,
+          "Simple Words",
+          questionIndex + 1,
+          false,
+          simpleWordsProgress.score
+        ),
+    };
     return (
       <SimpleWordsGame
         level={activeLevelKey}
         data={selectedLevelData as any}
+        {...simpleWordsResumeProps}
         onComplete={handleGameComplete}
         onClose={() => setActiveLessonGame(null)}
       />
     );
   }
 
-  if (activeLessonGame === "SYLLABLE_BASICS") {
+  if (activeLessonGame === "PHONICS_BASICS") {
+    const phonicsProgress = getPracticeProgress(activeLevelKey, "Phonics Basics");
+    // TODO: same as the notes above — SyllableBasicsGame's Props type doesn't
+    // declare these two yet, so pass through an `as any` bridge for now.
+    const phonicsResumeProps: any = {
+      initialQuestionIndex: Math.max((phonicsProgress.current_question || 1) - 1, 0),
+      onProgress: (questionIndex: number) =>
+        updatePracticeProgress(
+          activeLevelKey,
+          "Phonics Basics",
+          questionIndex + 1,
+          false,
+          phonicsProgress.score
+        ),
+    };
     return (
       <SyllableBasicsGame
         level={activeLevelKey}
         data={selectedLevelData as any}
+        {...phonicsResumeProps}
         onComplete={handleGameComplete}
         onClose={() => setActiveLessonGame(null)}
       />
     );
   }
 
-  // Calculate clean fraction indicators for the premium tracker blocks
-  const completedSoundsText = `${activeChunkIndex} / ${currentPhonemes.length} sounds completed`;
-  const individualProgressPct =
-    currentPhonemes.length > 0
-      ? (activeChunkIndex / currentPhonemes.length) * 100
-      : 0;
-  const isFocused = metrics.isLookingAtScreen;
-
-  return (
-    <SafeAreaView style={s.safeArea}>
-      <StatusBar
-        barStyle={isCameraActive ? "light-content" : "dark-content"}
-        backgroundColor={isCameraActive ? "#0B1220" : "#EFF6FF"}
-      />
-
-      {isCameraActive ? (
-        /*
-          CAMERA VIEW — redesigned for dyslexic learners:
-          - Structured stack (nav / word / camera / controls) instead of floating
-            overlays, so nothing ever sits on top of the camera image.
-          - The camera gets the largest single block on screen, framed in a
-            focus-colored ring — attention state is communicated with a single
-            glanceable color, not a wall of text.
-          - Only ONE phoneme is emphasized at a time; passed/upcoming letters
-            are deliberately muted so there's one clear thing to look at.
-          - Big touch targets, short plain-language labels, minimal simultaneous
-            messages on screen at once.
-        */
-        <View style={s.camScreen}>
-          {/* Slim, solid nav bar — never overlaps the camera below it */}
-          <View style={s.camNavBar}>
+  if (activeLessonGame === "READ_ALOUD") {
+    return (
+      <SafeAreaView style={s.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor="#EFF6FF" />
+        <View style={s.screen}>
+          <View style={s.simpleHeaderRow}>
             <TouchableOpacity
-              style={s.camNavBtn}
-              onPress={() => setIsCameraActive(false)}
+              style={s.simpleHeaderBtn}
+              onPress={() => setActiveLessonGame(null)}
             >
               <ArrowLeft size={20} color="#1E3A5F" />
             </TouchableOpacity>
-            <Text style={s.camNavTitle}>Phonics Coach</Text>
-            <TouchableOpacity style={s.camNavBtn}>
-              <Settings size={20} color="#1E3A5F" />
-            </TouchableOpacity>
+            <Text style={s.simpleHeaderTitle}>Read Aloud</Text>
+            <View style={s.simpleHeaderSpacer} />
           </View>
 
-          {/* Compact word + phoneme strip — current sound is the only bold thing here */}
-          <View style={s.wordStrip}>
-            <Text style={s.wordStripWord}>
-              {activePhonics.word?.toUpperCase()}
-            </Text>
-            <View style={s.phonemeStripRow}>
-              {currentPhonemes.map((chunk: string, index: number) => {
-                const isPassed = index < activeChunkIndex;
-                const isCurrent = index === activeChunkIndex;
-                return (
-                  <View
-                    key={index}
-                    style={[
-                      s.phonemeChip,
-                      isPassed && s.phonemeChipPassed,
-                      isCurrent && s.phonemeChipCurrent,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        s.phonemeChipText,
-                        isPassed && s.phonemeChipTextPassed,
-                        isCurrent && s.phonemeChipTextCurrent,
-                      ]}
-                    >
-                      {chunk.toUpperCase()}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* BIG camera block — takes up most of the screen, nothing on top of it
-              except a single focus badge and (briefly) a feedback banner */}
-          <View
-            style={[
-              s.cameraFrame,
-              { borderColor: isFocused ? "#22C55E" : "#F59E0B" },
-            ]}
-          >
-            <CameraPreview onFacesDetected={handleFaceDetected} />
-
-            <View
-              style={[
-                s.focusBadge,
-                {
-                  backgroundColor: isFocused
-                    ? "rgba(34,197,94,0.92)"
-                    : "rgba(245,158,11,0.92)",
-                },
-              ]}
-            >
-              <Eye size={14} color="#FFFFFF" />
-              <Text style={s.focusBadgeText}>
-                Focus {metrics.attentionScore}%
-              </Text>
-            </View>
-
-            {!metrics.isFacePresent && (
-              <View style={s.faceHintBadge}>
-                <Text style={s.faceHintText}>Center your face in view</Text>
-              </View>
-            )}
-
-            {phonicsValidationMsg && (
-              <View
-                style={[
-                  s.camFeedbackBanner,
-                  {
-                    backgroundColor: phonicsValidationMsg.isCorrect
-                      ? "rgba(16, 185, 129, 0.95)"
-                      : "rgba(239, 68, 68, 0.95)",
-                  },
-                ]}
-              >
-                <View style={s.camFeedbackRow}>
-                  {phonicsValidationMsg.isCorrect ? (
-                    <CheckCircle2 size={16} color="#FFFFFF" />
-                  ) : (
-                    <XCircle size={16} color="#FFFFFF" />
-                  )}
-                  <Text style={s.camFeedbackText}>
-                    {phonicsValidationMsg.text}
+          {totalReadAloudItems > 0 ? (
+            <View style={{ flex: 1 }}>
+              <View style={customStyles.visualBox}>
+                {renderDyslexiaTrackedSentence()}
+                {lastAccuracy > 0 && (
+                  <Text style={customStyles.accuracyText}>
+                    Accuracy: {lastAccuracy}%
                   </Text>
-                </View>
+                )}
               </View>
-            )}
-          </View>
 
-          {/* Progress bar sits directly under the camera, before the controls */}
-          <View style={s.camProgressRow}>
-            <View style={s.camProgressTrack}>
-              <View
-                style={[
-                  s.camProgressFill,
-                  { width: `${Math.min(individualProgressPct, 100)}%` },
-                ]}
-              />
-            </View>
-            <Text style={s.camProgressLabel}>{completedSoundsText}</Text>
-          </View>
-
-          {/* Bottom controls — large, few, clearly labeled */}
-          <View style={s.camControlsBar}>
-            {isReadingActive && (
-              <View style={s.simRow}>
-                <TouchableOpacity
-                  style={[s.simBtn, { backgroundColor: "#10B981" }]}
-                  onPress={() =>
-                    handleVerifyPhonemeSpeechInput(
-                      activePhonics.sounds?.[activeChunkIndex] || "correct",
-                    )
-                  }
-                >
-                  <CheckCircle2 size={16} color="#FFFFFF" />
-                  <Text style={s.simBtnText}>
-                    Match "{currentPhonemes[activeChunkIndex]?.toUpperCase()}"
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[s.simBtn, { backgroundColor: "#EF4444" }]}
-                  onPress={() => handleVerifyPhonemeSpeechInput("wrong_sound")}
-                >
-                  <XCircle size={16} color="#FFFFFF" />
-                  <Text style={s.simBtnText}>Distort Sound</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <View style={s.camMainButtonsRow}>
-              {!isReadingActive ? (
-                <TouchableOpacity
-                  style={[s.camMainBtn, { backgroundColor: "#2563EB" }]}
-                  onPress={() => setIsReadingActive(true)}
-                >
-                  <Play size={16} color="#FFFFFF" fill="#FFFFFF" />
-                  <Text style={s.camMainBtnText}>Start</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={[s.camMainBtn, { backgroundColor: "#475569" }]}
-                  onPress={() => setIsReadingActive(false)}
-                >
-                  <Pause size={16} color="#FFFFFF" />
-                  <Text style={s.camMainBtnText}>Pause</Text>
-                </TouchableOpacity>
-              )}
-
-              <TouchableOpacity
-                style={s.camMainBtn}
-                onPress={() => setActiveChunkIndex(0)}
-              >
-                <RotateCcw size={16} color="#FFFFFF" />
-                <Text style={s.camMainBtnText}>Retry</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[s.camMainBtn, { backgroundColor: "#1E3A5F" }]}
-                onPress={handleStopAndEvaluate}
-              >
-                <BarChart3 size={16} color="#FFFFFF" />
-                <Text style={s.camMainBtnText}>Report</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      ) : (
-        /* STANDARD NORMAL LESSON SUBMENU SELECTION FLOW (Camera stays closed on load) — unchanged */
-        <View style={s.screen}>
-          <View style={s.debugHud}>
-            <View style={s.debugTextRow}>
-              <Text style={s.debugText}>Learn Status:</Text>
-              {isLearnGatePassed(activeLevelKey) ? (
-                <View style={s.debugStatusRow}>
-                  <CheckCircle2 size={14} color="#15803D" />
-                  <Text style={[s.debugStatusText, { color: "#15803D" }]}>
-                    COMPLETED
-                  </Text>
-                </View>
-              ) : (
-                <View style={s.debugStatusRow}>
-                  <XCircle size={14} color="#B91C1C" />
-                  <Text style={[s.debugStatusText, { color: "#B91C1C" }]}>
-                    NOT LEARNED
-                  </Text>
-                </View>
-              )}
-            </View>
-            <TouchableOpacity
-              style={s.debugBtn}
-              onPress={() => debugCompleteLearnModule(activeLevelKey)}
-            >
-              <Wrench size={14} color="#fff" />
-              <Text style={s.debugBtnText}>Clear Gate</Text>
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={s.scrollContainer}
-          >
-            <Text style={s.pageTitle}>Practice Sessions</Text>
-
-            {/* Difficulty Grid Panel Row */}
-            <View style={s.card}>
-              <Text style={s.cardTitle}>DIFFICULTY LEVEL</Text>
-              <View style={s.diffRow}>
-                {DIFFICULTIES.map((d) => {
-                  const isActive = activeLevelKey === d.id;
-                  return (
-                    <TouchableOpacity
-                      key={d.id}
-                      onPress={() => handleSelectDifficulty(d)}
-                      activeOpacity={0.75}
-                      style={[s.diffItem, isActive && s.diffActive]}
-                    >
-                      <d.icon
-                        size={20}
-                        color={isActive ? "#FFFFFF" : "#2563EB"}
-                        style={s.diffIconWrap}
-                      />
-                      <Text
-                        style={[s.diffLabel, isActive && s.diffLabelActive]}
-                        numberOfLines={1}
-                      >
-                        {d.label}
-                      </Text>
-                      <Text
-                        style={[
-                          s.diffWords,
-                          isActive &&
-                            d.id === activeLevelKey && { color: "#BFDBFE" },
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {d.words} steps
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <View style={s.progRow}>
-                <View style={s.progBar}>
-                  <View
-                    style={[
-                      s.progFill,
-                      {
-                        width: `${Math.min((wordsCompletedCount / totalSessionSteps) * 100, 100)}%`,
-                      },
-                    ]}
-                  />
-                </View>
-                <Text style={s.progTxt}>
-                  {wordsCompletedCount}/{totalSessionSteps}
-                </Text>
-              </View>
-            </View>
-
-            {/* Secondary Sub Games Mapping Panels List */}
-            <View style={s.card}>
-              <View style={s.cardTitleRow}>
-                <BookOpen size={14} color="#6B9EC8" />
-                <Text style={s.cardTitleText}>
-                  LESSON PRACTICE ({currentDiff.label})
-                </Text>
-              </View>
-              {LESSON_ITEMS.map((item, i) => (
-                <TouchableOpacity
-                  key={item.id}
-                  activeOpacity={0.7}
-                  onPress={() => handleFeatureRowPress(item.id)}
-                  style={[
-                    s.pRow,
-                    i === LESSON_ITEMS.length - 1 && { borderBottomWidth: 0 },
-                  ]}
-                >
-                  <View style={s.pLeft}>
-                    <View style={[s.pIcon, { backgroundColor: item.bg }]}>
-                      <item.icon size={18} color={item.iconColor} />
-                    </View>
-                    <View style={s.pTextContainer}>
-                      <Text style={s.pName} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      <Text style={s.pMeta} numberOfLines={1}>
-                        {item.meta}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={s.pArr}>
-                    <ChevronRight size={14} color="#6B9EC8" />
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Immersive Camera Launch Anchor Panel Block */}
-            <View style={s.card}>
-              <View style={s.cardTitleRow}>
-                <Target size={14} color="#6B9EC8" />
-                <Text style={s.cardTitleText}>ATTENTION PHONICS COACH</Text>
-              </View>
-              <Text style={s.phonicsHint}>
-                Launch an immersive portrait reading sequence featuring active
-                eye tracking & vocal assessment.
-              </Text>
-              <TouchableOpacity
-                style={s.primaryLaunchCameraBtn}
-                onPress={handleOpenCameraFlow}
-              >
-                <Rocket size={16} color="#fff" />
-                <Text style={s.primaryLaunchCameraBtnText}>
-                  Open Fullscreen Camera
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Standard Read Aloud Block Layer */}
-            {totalReadAloudItems > 0 && (
               <ReadAloudModule
                 wordIndex={safeWordIndex}
                 totalSentences={totalReadAloudItems}
@@ -811,42 +563,216 @@ export default function DyslexicPractice() {
                   words: (currentEntry?.sentence || "").split(" "),
                 }}
                 mimoFeedback={mimoFeedback}
+                isSentenceCorrect={isSentenceCorrect}
                 onSpeechResult={handleProcessMimoSpeech}
-                onNextWord={goToNextWord}
+                onNextWord={isSentenceCorrect ? goToNextWord : () => {}}
+                onClearFeedback={clearFeedbackForRetry}
               />
-            )}
-          </ScrollView>
-        </View>
-      )}
-
-      {/* COMPREHENSIVE HUD ATTENTION EVALUATION SHEET MODAL */}
-      <Modal
-        visible={reportModalVisible}
-        transparent={true}
-        animationType="slide"
-      >
-        <View style={s.modalOverlay}>
-          <View style={s.modalContent}>
-            <View style={s.modalTitleRow}>
-              <PawPrint size={20} color="#1E3A5F" />
-              <Text style={s.modalTitle}>Mimo's Focus Report</Text>
             </View>
-            <Text style={s.modalScore}>
-              {evaluationData?.finalScore}% Focus Score
+          ) : (
+            <Text style={s.phonicsHint}>
+              No read aloud sentences available for this level yet.
             </Text>
-            <Text style={s.modalFeedback}>{evaluationData?.feedback}</Text>
-            <TouchableOpacity
-              style={s.modalCloseBtn}
-              onPress={handleCloseReport}
-            >
-              <Text style={s.modalCloseBtnText}>Back to Practice</Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
-      </Modal>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={s.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#EFF6FF" />
+
+      <View style={s.screen}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={s.scrollContainer}
+        >
+          {/* Learn Progress strip */}
+          <View style={s.learnCard}>
+            <View style={s.learnCardHeader}>
+              <Text style={s.learnCardTitle}>LEARN PROGRESS</Text>
+              <View style={s.learnCardHeaderRight}>
+                <Text style={s.learnCardCount}>
+                  {learnLevelsCompletedCount} of {LEARN_LEVEL_KEYS.length} done
+                </Text>
+              </View>
+            </View>
+            <View style={s.learnLevelRow}>
+              {LEARN_LEVEL_KEYS.map((key, idx) => {
+                const done = isLearnLevelComplete(key);
+                return (
+                  <View key={key} style={s.learnLevelCol}>
+                    <View style={[s.learnLevelDot, done && s.learnLevelDotDone]}>
+                      {done ? (
+                        <Check size={14} color="#fff" />
+                      ) : (
+                        <Text style={s.learnLevelDotText}>{idx + 1}</Text>
+                      )}
+                    </View>
+                    <Text style={[s.learnLevelLabel, done && s.learnLevelLabelDone]}>
+                      L{idx + 1}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
+          <Text style={s.pageTitle}>Practice Sessions</Text>
+
+          {/* Difficulty grid */}
+          <View style={s.card}>
+            <Text style={s.cardTitle}>DIFFICULTY LEVEL</Text>
+            <View style={s.diffRow}>
+              {DIFFICULTIES.map((d) => {
+                const isActive = activeLevelKey === d.id;
+                const unlocked = isLearnGatePassed(d.id);
+
+                const completedCount = Math.min(getLevelCompletedCount(d.id), d.words);
+                // NEW: percentage across all 4 modules combined
+                const percent =
+                  d.words > 0 ? Math.round((completedCount / d.words) * 100) : 0;
+
+                return (
+                  <TouchableOpacity
+                    key={d.id}
+                    onPress={() => handleSelectDifficulty(d)}
+                    activeOpacity={unlocked ? 0.75 : 1}
+                    disabled={!unlocked}
+                    style={[
+                      s.diffCard,
+                      isActive && unlocked && s.diffCardActive,
+                      !unlocked && s.diffCardLocked,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        s.diffIconBadge,
+                        isActive && unlocked && s.diffIconBadgeActive,
+                        !unlocked && s.diffIconBadgeLocked,
+                      ]}
+                    >
+                      {unlocked ? (
+                        <d.icon size={18} color={isActive ? "#fff" : "#2563EB"} />
+                      ) : (
+                        <Lock size={16} color="#94A3B8" />
+                      )}
+                    </View>
+
+                    <Text
+                      style={[
+                        s.diffCardName,
+                        isActive && unlocked && s.diffCardNameActive,
+                        !unlocked && s.diffCardNameLocked,
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {d.label}
+                    </Text>
+
+                    {unlocked ? (
+                      <>
+                        <ProgressBar
+                          completed={completedCount}
+                          total={d.words}
+                          label={null}
+                          fillColor={isActive ? "#BFDBFE" : "#2563EB"}
+                          trackColor={isActive ? "rgba(255,255,255,0.35)" : "#DBEAFE"}
+                          height={5}
+                        />
+                        {/* UPDATED: now shows completed/total AND percent, e.g. "0/80 • 0%" */}
+                        <Text
+                          style={[s.diffCardCount, isActive && s.diffCardCountActive]}
+                        >
+                          {completedCount}/{d.words} • {percent}%
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={s.diffCardLockReason} numberOfLines={3}>
+                        {getLockMessage(d.id)}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Secondary Sub Games Mapping Panels List */}
+          <View style={s.card}>
+            <View style={s.cardTitleRow}>
+              <BookOpen size={14} color="#6B9EC8" />
+              <Text style={s.cardTitleText}>
+                LESSON PRACTICE ({currentDiff.label})
+              </Text>
+            </View>
+            {LESSON_ITEMS.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                activeOpacity={0.7}
+                onPress={() => handleFeatureRowPress(item.id)}
+                style={s.pRow}
+              >
+                <View style={s.pLeft}>
+                  <View style={[s.pIcon, { backgroundColor: item.bg }]}>
+                    <item.icon size={18} color={item.iconColor} />
+                  </View>
+                  <View style={s.pTextContainer}>
+                    <Text style={s.pName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={s.pMeta} numberOfLines={1}>
+                      {item.meta}
+                    </Text>
+                  </View>
+                </View>
+                <View style={s.pArr}>
+                  <ChevronRight size={14} color="#6B9EC8" />
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
+
+const customStyles = StyleSheet.create({
+  visualBox: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1.5,
+    borderColor: "#E2E8F0",
+    marginBottom: 10,
+    alignItems: "center",
+  },
+  trackedContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+  baseWordText: {
+    fontSize: 24,
+    fontWeight: "bold",
+    letterSpacing: 1.5,
+  },
+  wordCorrect: {
+    color: "#16A34A",
+    textDecorationLine: "underline",
+  },
+  wordMissed: {
+    color: "#EF4444",
+  },
+  accuracyText: {
+    marginTop: 10,
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#2563EB",
+  },
+});
 
 const s = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#EFF6FF" },
@@ -857,230 +783,79 @@ const s = StyleSheet.create({
     fontWeight: "700",
     color: "#1E3A5F",
     marginBottom: 16,
+    marginTop: 4,
+  },
+
+  learnCard: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#DBEAFE",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginBottom: 14,
     marginTop: 8,
   },
-
-  // Debug Elements
-  debugHud: {
-    backgroundColor: "#DBEAFE",
-    padding: 12,
-    borderRadius: 12,
+  learnCardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#93C5FD",
-    marginBottom: 12,
+    marginBottom: 6,
   },
-  debugTextRow: {
-    flex: 1,
+  learnCardTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6B9EC8",
+    letterSpacing: 0.5,
+  },
+  learnCardHeaderRight: {
     flexDirection: "row",
-    flexWrap: "wrap",
     alignItems: "center",
     gap: 8,
-    marginRight: 8,
   },
-  debugText: {
-    fontSize: 13,
+  learnCardCount: {
+    fontSize: 11,
     fontWeight: "600",
-    color: "#1E40AF",
+    color: "#2563EB",
   },
-  debugStatusRow: {
+  learnLevelRow: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  debugStatusText: {
-    fontSize: 13,
-    fontWeight: "700",
-  },
-  debugBtn: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: 6,
-    backgroundColor: "#2563EB",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    minHeight: 36,
-    justifyContent: "center",
   },
-  debugBtnText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
-
-  // ============== CAMERA VIEW (redesigned) ==============
-  camScreen: { flex: 1, backgroundColor: "#0B1220" },
-
-  // Slim solid nav — fixed height, sits ABOVE the camera block, never overlapping it
-  camNavBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 10,
-    backgroundColor: "#0B1220",
-  },
-  camNavBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  camNavTitle: {
-    color: "#FFFFFF",
-    fontSize: 15,
-    fontWeight: "700",
-    letterSpacing: 1,
-  },
-
-  // Compact word + phoneme strip, fixed height
-  wordStrip: { paddingHorizontal: 20, paddingBottom: 12, alignItems: "center" },
-  wordStripWord: {
-    color: "#FFFFFF",
-    fontSize: 26,
-    fontWeight: "800",
-    letterSpacing: 1,
-    marginBottom: 10,
-  },
-  phonemeStripRow: {
-    flexDirection: "row",
-    gap: 10,
-    flexWrap: "wrap",
-    justifyContent: "center",
-  },
-  phonemeChip: {
-    minWidth: 44,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.10)",
-    alignItems: "center",
-  },
-  phonemeChipText: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "rgba(255,255,255,0.45)",
-  },
-  phonemeChipPassed: { backgroundColor: "rgba(34,197,94,0.18)" },
-  phonemeChipTextPassed: { color: "#4ADE80" },
-  phonemeChipCurrent: { backgroundColor: "#F59E0B" },
-  phonemeChipTextCurrent: { color: "#1E1300", fontSize: 18 },
-
-  // The camera itself — the single largest element on screen
-  cameraFrame: {
+  learnLevelCol: {
     flex: 1,
-    marginHorizontal: 14,
-    borderRadius: 24,
-    borderWidth: 4,
-    overflow: "hidden",
-    backgroundColor: "#000",
-  },
-
-  focusBadge: {
-    position: "absolute",
-    top: 14,
-    left: 14,
-    flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    borderRadius: 99,
+    gap: 2,
   },
-  focusBadgeText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
-
-  faceHintBadge: {
-    position: "absolute",
-    bottom: 18,
-    alignSelf: "center",
-    backgroundColor: "rgba(15,18,24,0.75)",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 99,
-  },
-  faceHintText: { color: "#FFFFFF", fontSize: 13, fontWeight: "600" },
-
-  camFeedbackBanner: {
-    position: "absolute",
-    bottom: 18,
-    left: 20,
-    right: 20,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    alignItems: "center",
-  },
-  camFeedbackRow: {
-    flexDirection: "row",
+  learnLevelDot: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1.5,
+    borderColor: "#BFDBFE",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
   },
-  camFeedbackText: {
-    color: "#FFFFFF",
-    fontWeight: "800",
-    fontSize: 14,
-    textAlign: "center",
+  learnLevelDotDone: {
+    backgroundColor: "#2563EB",
+    borderColor: "#2563EB",
   },
-
-  // Progress directly under the camera
-  camProgressRow: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4 },
-  camProgressTrack: {
-    width: "100%",
-    height: 8,
-    backgroundColor: "rgba(255,255,255,0.15)",
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  camProgressFill: {
-    height: "100%",
-    backgroundColor: "#10B981",
-    borderRadius: 4,
-  },
-  camProgressLabel: {
-    color: "rgba(255,255,255,0.7)",
+  learnLevelDotText: {
     fontSize: 12,
     fontWeight: "600",
-    marginTop: 6,
-    textAlign: "center",
+    color: "#94A3B8",
   },
-
-  // Bottom controls, fixed height, large touch targets
-  camControlsBar: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 16 },
-  simRow: { flexDirection: "row", gap: 8, marginBottom: 10 },
-  simBtn: {
-    flex: 1,
-    flexDirection: "row",
-    gap: 6,
-    paddingVertical: 12,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
+  learnLevelLabel: {
+    fontSize: 9,
+    fontWeight: "500",
+    color: "#94A3B8",
   },
-  simBtnText: {
-    color: "#FFFFFF",
-    fontSize: 13,
+  learnLevelLabelDone: {
+    color: "#1E3A5F",
     fontWeight: "700",
-    textAlign: "center",
   },
-  camMainButtonsRow: { flexDirection: "row", gap: 8 },
-  camMainBtn: {
-    flex: 1,
-    flexDirection: "row",
-    gap: 6,
-    backgroundColor: "#64748B",
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 50,
-  },
-  camMainBtnText: { color: "#FFFFFF", fontWeight: "700", fontSize: 14 },
-  // ============== END CAMERA VIEW ==============
 
-  // Base Menu Styles Block (unchanged — original pre-camera design)
   card: {
     backgroundColor: "#fff",
     borderRadius: 16,
@@ -1108,56 +883,78 @@ const s = StyleSheet.create({
     color: "#6B9EC8",
     letterSpacing: 1,
   },
-  diffRow: { flexDirection: "row", gap: 6, justifyContent: "space-between" },
-  diffItem: {
+
+  diffRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  diffCard: {
     flex: 1,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: "#BFDBFE",
-    backgroundColor: "#fff",
-    paddingVertical: 12,
+    alignItems: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  diffCardActive: {
+    backgroundColor: "#2563EB",
+    borderColor: "#2563EB",
+  },
+  diffCardLocked: {
+    opacity: 0.85,
+  },
+  diffIconBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: "#EFF6FF",
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 5,
   },
-  diffActive: { backgroundColor: "#2563EB", borderColor: "#2563EB" },
-  diffIconWrap: { marginBottom: 4 },
-  diffLabel: {
+  diffIconBadgeActive: {
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  diffIconBadgeLocked: {
+    backgroundColor: "#EEF2F6",
+  },
+  diffCardName: {
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "600",
     color: "#1E3A5F",
     textAlign: "center",
+    marginBottom: 3,
   },
-  diffLabelActive: { color: "#fff" },
-  diffWords: {
+  diffCardNameActive: { color: "#fff" },
+  diffCardNameLocked: { color: "#94A3B8" },
+  diffCardCount: {
     fontSize: 10,
+    fontWeight: "600",
     color: "#6B9EC8",
-    marginTop: 2,
+    marginTop: 4,
     textAlign: "center",
   },
-
-  progRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 14,
+  diffCardCountActive: { color: "#fff" },
+  diffCardLockReason: {
+    fontSize: 9,
+    color: "#B0B8C1",
+    textAlign: "center",
+    marginTop: 2,
+    lineHeight: 12,
   },
-  progBar: {
-    flex: 1,
-    height: 8,
-    backgroundColor: "#BFDBFE",
-    borderRadius: 99,
-    overflow: "hidden",
-  },
-  progFill: { height: "100%", backgroundColor: "#2563EB", borderRadius: 99 },
-  progTxt: { fontSize: 12, color: "#6B9EC8", fontWeight: "600" },
-
   pRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#DBEAFE",
     justifyContent: "space-between",
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    marginBottom: 8,
   },
   pLeft: {
     flexDirection: "row",
@@ -1192,69 +989,26 @@ const s = StyleSheet.create({
     marginBottom: 12,
     fontStyle: "italic",
   },
-  primaryLaunchCameraBtn: {
-    flexDirection: "row",
-    gap: 8,
-    backgroundColor: "#2563EB",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 4,
-  },
-  primaryLaunchCameraBtnText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 14,
-  },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  modalContent: {
-    width: "100%",
-    maxWidth: 340,
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 24,
-    alignItems: "center",
-  },
-  modalTitleRow: {
+  simpleHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
+    justifyContent: "space-between",
+    marginBottom: 16,
+    marginTop: 8,
   },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#1E3A5F",
-    textAlign: "center",
-  },
-  modalScore: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#2563EB",
-    marginBottom: 8,
-  },
-  modalFeedback: {
-    fontSize: 14,
-    color: "#475569",
-    textAlign: "center",
-    marginBottom: 20,
-    lineHeight: 20,
-  },
-  modalCloseBtn: {
-    backgroundColor: "#2563EB",
-    paddingVertical: 12,
-    paddingHorizontal: 30,
+  simpleHeaderBtn: {
+    width: 40,
+    height: 40,
     borderRadius: 12,
-    minHeight: 44,
+    backgroundColor: "#DBEAFE",
+    alignItems: "center",
     justifyContent: "center",
   },
-  modalCloseBtnText: { color: "#fff", fontWeight: "700" },
+  simpleHeaderSpacer: { width: 40 },
+  simpleHeaderTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1E3A5F",
+  },
 });

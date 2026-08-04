@@ -1,20 +1,19 @@
-// ==========================================
-// 1. GLOBAL ENVIRONMENT SHIMS (Safe for Node/Web)
-// ==========================================
-const applyShims = () => {
-  if (typeof globalThis !== 'undefined' && !(globalThis as any).DOMMatrix) {
-    (globalThis as any).DOMMatrix = class DOMMatrix {
+// services/pdfParserService.ts
+const applyShims = (): void => {
+  if (typeof globalThis !== 'undefined' && !(globalThis as Record<string, any>)['DOMMatrix']) {
+    (globalThis as Record<string, any>)['DOMMatrix'] = class DOMMatrix {
       a = 1; b = 0; c = 0; d = 1; e = 0; f = 0;
-      constructor(init?: any) {
+      constructor(init?: unknown) {
         if (typeof init === 'string') return;
         if (Array.isArray(init)) {
-          this.a = init[0] ?? 1; this.b = init[1] ?? 0;
-          this.c = init[2] ?? 0; this.d = init[3] ?? 1;
-          this.e = init[4] ?? 0; this.f = init[5] ?? 0;
+          this.a = (init[0] as number) ?? 1; this.b = (init[1] as number) ?? 0;
+          this.c = (init[2] as number) ?? 0; this.d = (init[3] as number) ?? 1;
+          this.e = (init[4] as number) ?? 0; this.f = (init[5] as number) ?? 0;
         } else if (typeof init === 'object' && init !== null) {
-          this.a = init.a ?? 1; this.b = init.b ?? 0;
-          this.c = init.c ?? 0; this.d = init.d ?? 1;
-          this.e = init.e ?? 0; this.f = init.f ?? 0;
+          const obj = init as Record<string, number>;
+          this.a = obj['a'] ?? 1; this.b = obj['b'] ?? 0;
+          this.c = obj['c'] ?? 0; this.d = obj['d'] ?? 1;
+          this.e = obj['e'] ?? 0; this.f = obj['f'] ?? 0;
         }
       }
     };
@@ -41,8 +40,8 @@ export const splitIntoSyllables = (word: string): string => {
   const vowelIndices: number[] = [];
 
   for (let i = 0; i < cleanWord.length; i++) {
-    if (vowels.includes(lower[i])) {
-      if (i === cleanWord.length - 1 && lower[i] === 'e' && i > 0 && !vowels.includes(lower[i - 1])) {
+    if (vowels.includes(lower[i] ?? "")) {
+      if (i === cleanWord.length - 1 && lower[i] === 'e' && i > 0 && !vowels.includes(lower[i - 1] ?? "")) {
         continue;
       }
       vowelIndices.push(i);
@@ -57,8 +56,8 @@ export const splitIntoSyllables = (word: string): string => {
   let lastCut = 0;
 
   for (let k = 0; k < vowelIndices.length - 1; k++) {
-    const v1 = vowelIndices[k];
-    const v2 = vowelIndices[k + 1];
+    const v1 = vowelIndices[k] ?? 0;
+    const v2 = vowelIndices[k + 1] ?? 0;
     const consonantsBetween = v2 - v1 - 1;
     let cutPoint = -1;
 
@@ -90,11 +89,11 @@ export const splitIntoSentences = (text: string): string[] => {
   return text
     .replace(/([.?!])\s*(?=[A-Z])/g, "$1|")
     .split("|")
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
+    .map((s: string) => s.trim())
+    .filter((s: string) => s.length > 0);
 };
 
-export const buildSyllableMap = (text: string) => {
+export const buildSyllableMap = (text: string): Array<{ original: string; split: string }> => {
   const tokens = text.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()?"']/g, " ").split(/\s+/);
   const map: Array<{ original: string; split: string }> = [];
   const seen = new Set<string>();
@@ -116,18 +115,15 @@ export const buildSyllableMap = (text: string) => {
 };
 
 /**
- * PDF Parser Optimized exclusively for Expo Web Server Bundling
+ * PDF Parser using pdfjs-dist. Accepts a Blob (web) or a fetchable URL string.
  */
 export const parsePdfDocument = async (fileInput: Blob | string): Promise<ParsedPage[]> => {
   try {
     applyShims();
 
-    // Use the LEGACY build — this is the one built to run outside a
-    // normal, fully-featured browser tab (Expo/Metro/Node/SSR).
-    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs') as any;
 
-    // THIS is the piece your original code was missing.
-    // Without a workerSrc, pdf.js cannot spin up its worker and throws.
     if (!pdfjs.GlobalWorkerOptions.workerSrc) {
       pdfjs.GlobalWorkerOptions.workerSrc =
         `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/legacy/build/pdf.worker.min.mjs`;
@@ -163,6 +159,7 @@ export const parsePdfDocument = async (fileInput: Blob | string): Promise<Parsed
       const textContent = await page.getTextContent();
 
       const pageText = textContent.items
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .map((item: any) => item.str)
         .join(" ")
         .replace(/\s+/g, " ")
@@ -179,19 +176,36 @@ export const parsePdfDocument = async (fileInput: Blob | string): Promise<Parsed
     }
 
     if (chunks.length > 0) return chunks;
-    throw new Error("No readable text layers found inside the document structure. (This PDF may be scanned/image-only and needs OCR.)");
+    throw new Error("No readable text layers found inside the document structure.");
 
-  } catch (e) {
-    // Log the FULL error so you can actually see what broke.
+  } catch (e: unknown) {
     console.error("PDF Core Extraction Error Details:", e);
-
     const message = e instanceof Error ? e.message : String(e);
 
     return [{
       pageNumber: 1,
       text: `Parsing error occurred: ${message}`,
-      sentences: [`Parsing error occurred: ${message}`], // now shows the real reason in the UI
+      sentences: [`Parsing error occurred: ${message}`],
       syllableMap: []
     }];
   }
+};
+
+/**
+ * Instantly download the parsed output as a JSON file (web only).
+ */
+export const downloadParsedJson = (parsedData: ParsedPage[], filename: string = "pdf-extracted-output.json"): void => {
+  const jsonString = JSON.stringify(parsedData, null, 2);
+  const blob = new Blob([jsonString], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const doc = (globalThis as any).document;
+
+  const link = doc.createElement("a");
+  link.href = url;
+  link.download = filename;
+  doc.body.appendChild(link);
+  link.click();
+  doc.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
