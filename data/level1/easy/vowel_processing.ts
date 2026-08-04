@@ -1,7 +1,7 @@
 const lesson = {
   id: "vowel_processing",
   title: "Vowel Safari: Short Vowels",
-  subtitle: "Let's track down short vowel sounds hidden inside words! 🔍",
+  subtitle: "Let's track down short vowel sounds hidden inside words!",
   color: "#FEF3C7", // Warm safari yellow
   mascot: "🦁",
   explanation: [
@@ -36,21 +36,21 @@ const lesson = {
   ],
   examples: [
     {
-      letter: "a",
+      letter: "c",
       word: "cat",
       emoji: "🐱",
       sentence: "The c-a-t sat on the mat.",
       color: "#EF4444",
     },
     {
-      letter: "o",
+      letter: "f",
       word: "fox",
       emoji: "🦊",
       sentence: "A quick f-o-x hopped over the log.",
       color: "#F59E0B",
     },
     {
-      letter: "i",
+      letter: "f",
       word: "fish",
       emoji: "🐟",
       sentence: "The little f-i-sh can swim fast.",
@@ -60,19 +60,19 @@ const lesson = {
   guidedPractice: [
     {
       question:
-        "🎯 Which short vowel is missing in c_p? (Think of a drinking cup!)",
+        "Which short vowel is missing in c_p? (Think of a drinking cup!)",
       options: ["a", "u"],
       answer: "u",
       interactionType: "tap-to-reveal",
     },
     {
-      question: "🐸 Drag the word that has the short /o/ sound",
+      question: "Drag the word that has the short /o/ sound",
       options: ["hop", "hip"],
       answer: "hop",
       interactionType: "drag-and-drop",
     },
     {
-      question: "🍎 Which vowel sits in the middle of 'bag'?",
+      question: "Which vowel sits in the middle of 'bag'?",
       options: ["a", "e"],
       answer: "a",
       interactionType: "tap-to-reveal",
@@ -84,7 +84,7 @@ const lesson = {
     "🌟 Take your time, hunting for letters is a fun puzzle!",
   ],
   completionMessage:
-    "Super Safari Skills! You tracked down those short vowels! 🚀",
+    "Super Safari Skills! You tracked down those short vowels! ",
 };
 
 export default lesson;
