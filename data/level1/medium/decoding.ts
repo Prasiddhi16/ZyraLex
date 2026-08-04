@@ -1,44 +1,44 @@
 const level1Decoding = {
   id: "decoding_level1",
-  title: "Learning b and d",
-  subtitle: "Discover how twin letters face different directions! 🪞",
+  title: "Decoding b and d Sounds",
+  subtitle: "Listen closely and blend sounds to read words! 🔊",
   color: "#DBEAFE",
   mascot: "assets/mimo1.png",
   progressColor: "#2563EB",
 
   introduction: {
     mascotMessage:
-      "Hey Sound Detective! 🕵️‍♂️ Mimo's here. Today we're solving the mystery of b and d — two letters that look like twins but point in different directions. Let's crack the case!",
+      "Hey Sound Detective!  Mimo's here. Today we're unlocking the secret sounds of b and d! When we match their sounds to letters, we can decode all kinds of words. Let's blend!",
   },
 
   explanation: [
     {
       type: "info",
       content:
-        "b and d are mirror twins — the exact same shape, just flipped like a reflection! 🪞",
-      animationType: "mirror-flip",
-      visualAnchor: "b ↔ d",
+        "Every letter makes a special sound! The letter b says /b/ and the letter d says /d/.",
+      animationType: "sound-wave",
+      visualAnchor: "b → /b/ · d → /d/",
     },
     {
       type: "tip",
       content:
-        "b starts with a tall straight stick, then a round belly puffs out on the right → b",
-      animationType: "stroke-by-stroke",
-      visualAnchor: "b",
+        "To decode a b word, start with /b/, say the vowel, and blend: /b/ - /a/ - /t/ → bat!",
+      animationType: "sound-blend",
+      visualAnchor: "/b/ + /a/ + /t/",
     },
     {
       type: "tip",
       content:
-        "d starts with a round donut, then a tall stick stands up on the right → d",
-      animationType: "stroke-by-stroke",
-      visualAnchor: "d",
+        "To decode a d word, start with /d/, say the vowel, and blend: /d/ - /o/ - /g/ → dog!",
+      animationType: "sound-blend",
+      visualAnchor: "/d/ + /o/ + /g/",
     },
     {
       type: "tip",
       content:
-        "Picture a bat 🏏 then a ball ⚽ for b. Picture a donut 🍩 then a stick for d.",
-      animationType: "morph-asset",
-      visualAnchor: "b 🏏⚽ · d 🍩",
+        "Press your lips together for /b/! Touch your tongue behind your teeth for /d/! ",
+      animationType: "audio-visual-sync",
+      visualAnchor: "👄 /b/ · 👅 /d/",
     },
   ],
 
@@ -47,28 +47,28 @@ const level1Decoding = {
       emoji: "🚌",
       letter: "b",
       word: "bus",
-      sentence: "The B-us stops right outside to pick us up.",
+      sentence: "Blend the sounds: /b/ - /u/ - /s/ → bus!",
       color: "#2563EB",
     },
     {
       emoji: "🔔",
       letter: "b",
       word: "bell",
-      sentence: "Ring the B-ell so everyone knows it's time.",
+      sentence: "Blend the sounds: /b/ - /e/ - /l/ → bell!",
       color: "#2563EB",
     },
     {
       emoji: "🐶",
       letter: "d",
       word: "dog",
-      sentence: "The D-og wags its tail and barks with joy.",
+      sentence: "Blend the sounds: /d/ - /o/ - /g/ → dog!",
       color: "#F59E0B",
     },
     {
-      emoji: "🚪",
+      emoji: "🦆",
       letter: "d",
-      word: "door",
-      sentence: "Open the D-oor slowly and walk on through.",
+      word: "duck",
+      sentence: "Blend the sounds: /d/ - /u/ - /c/ - /k/ → duck!",
       color: "#F59E0B",
     },
   ],
@@ -76,42 +76,43 @@ const level1Decoding = {
   guidedPractice: [
     {
       interactionType: "tap-to-reveal",
-      question: "🎯 Which letter has the stick first, then the belly?",
-      options: ["b", "d"],
-      answer: "b",
-      successMessage: "Sharp eyes! b starts with the stick! 🏏",
+      question:
+        "🔊 Which sound does the letter 'b' make at the start of a word?",
+      options: ["/b/ like in bus", "/d/ like in dog"],
+      answer: "/b/ like in bus",
+      successMessage: "Great listening! 'b' makes the /b/ sound! ",
     },
     {
       interactionType: "drag-and-drop",
-      question: "🐶 Drag the letter that starts the word 'dog'",
-      options: ["b", "d"],
-      answer: "d",
-      successMessage: "Case closed! D-og starts with 'd'! 🐶",
+      question: "Blend the sounds /d/ - /i/ - /g/. Which word did you decode?",
+      options: ["dig", "big"],
+      answer: "dig",
+      successMessage: "Awesome decoding! /d/ - /i/ - /g/ spells dig! ⛏️",
     },
     {
       interactionType: "tap-to-reveal",
-      question: "🚌 Which word starts with 'b'?",
-      options: ["bus", "door"],
-      answer: "bus",
-      successMessage: "You spotted it! B-us starts with 'b'! 🚌",
+      question: "Listen to the word 'bad'. What is its starting sound?",
+      options: ["/b/", "/d/"],
+      answer: "/b/",
+      successMessage: "Spot on! The word 'bad' starts with the /b/ sound!",
     },
     {
       interactionType: "drag-and-drop",
-      question: "🔔 Drag the matching letter into the box: __ell",
-      options: ["b", "d"],
-      answer: "b",
-      successMessage: "Perfect match! B-ell is correct! 🔔",
+      question: "🎧 Sound out /d/ - /o/ - /t/. Drag the correct decoded word:",
+      options: ["dot", "bot"],
+      answer: "dot",
+      successMessage: "You decoded it! /d/ - /o/ - /t/ spells dot! ",
     },
   ],
 
   rewards: {
     stars: 5,
-    badge: "🪞 Mirror Master",
-    message: "Mystery solved! You earned the official Mirror Master badge!",
+    badge: "🎧 Sound Decoder",
+    message: "Mystery solved! You earned the official Sound Decoder badge!",
   },
 
   completionMessage:
-    "🎉 Amazing detective work! You can now tell b and d apart with confidence. Mimo is doing a happy dance! 🕺",
+    "🎉 Amazing detective work! You can now decode b and d words with confidence. Mimo is doing a happy dance! 🕺",
 };
 
 export default level1Decoding;

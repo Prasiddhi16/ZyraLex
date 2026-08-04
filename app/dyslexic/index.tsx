@@ -422,50 +422,6 @@ export default function DyslexicHome() {
           </View>
         </View>
 
-        <View style={styles.aiCard}>
-          <View style={styles.aiHeader}>
-            <View style={styles.aiIconTitle}>
-              <MaterialCommunityIcons name="brain" size={20} color="#3b82f6" />
-              <Text style={styles.aiTitle}> Diagnostic Strategy</Text>
-            </View>
-          </View>
-          <Text style={styles.aiSubtitle}>
-            Personalized for your reading patterns
-          </Text>
-          <View style={styles.simplificationRow}>
-            <View style={styles.toggleLabelGroup}>
-              <MaterialCommunityIcons
-                name="auto-fix"
-                size={18}
-                color="#3b82f6"
-              />
-              <Text style={styles.toggleText}>
-                Simplify display text adjustments
-              </Text>
-            </View>
-            <Switch
-              trackColor={{ false: "#d1d5db", true: "#93c5fd" }}
-              thumbColor={isSimplified ? "#3b82f6" : "#f4f3f4"}
-              onValueChange={() => setIsSimplified(!isSimplified)}
-              value={isSimplified}
-            />
-          </View>
-          <View style={styles.aiBubble}>
-            <View style={styles.strategyRow}>
-              <FontAwesome5 name="seedling" size={14} color="#22c55e" />
-              <Text style={styles.strategyLabel}>
-                {" "}
-                Dynamic Plan: {reviewMessage}
-              </Text>
-            </View>
-            <Text style={styles.aiMessage}>
-              {isSimplified
-                ? `System setup optimized for managing variations inside ${weakArea.replace("_", " ")} tracks.`
-                : `Our algorithm detected performance concentrations relating to ${weakArea.replace("_", " ")}.`}
-            </Text>
-          </View>
-        </View>
-
         <View style={styles.statsWrapper}>
           <View style={styles.statsGrid}>
             <View style={styles.newStatCard}>
