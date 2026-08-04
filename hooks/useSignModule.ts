@@ -4,13 +4,10 @@ import { supabase } from '@/lib/supabase';
 import type { Lesson, Level } from '@/types/lesson';
 import { useCallback, useEffect, useState } from 'react';
 
-const EMPTY_STATS: UserStats = { 
-  dayStreak: 0,
-  totalXp: 0,
-  avgAccuracy: 0,
-  currentLevelId: null,
-  currentLessonId: null
- };
+const EMPTY_STATS: UserStats = {
+  dayStreak: 0, totalXp: 0, avgAccuracy: 0,
+  currentLevelId: null, currentLessonId: null,
+};
 
 export function useSignModule() {
   const [levels, setLevels] = useState<Level[]>([]);
@@ -23,11 +20,8 @@ export function useSignModule() {
     setLoading(true);
     setError(null);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      const result = await fetchSignModule(user?.id);
+      const { data: { session } } = await supabase.auth.getSession();
+      const result = await fetchSignModule(session?.user?.id);
       setLevels(result.levels);
       setLessonMap(result.lessonMap);
       setStats(result.stats);
@@ -40,6 +34,13 @@ export function useSignModule() {
 
   useEffect(() => {
     load();
+    // Re-run whenever auth state actually changes (e.g. session attaches
+    // a beat after signUp, or token refreshes) so a stale/empty first
+    // fetch gets corrected automatically.
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      load();
+    });
+    return () => sub.subscription.unsubscribe();
   }, [load]);
 
   return { levels, lessonMap, stats, loading, error, refetch: load };
