@@ -473,25 +473,6 @@ return (
   />
 );
 
-// to this (drop the `: any` bridge, pass props directly — now typed):
-return (
-  <LetterRecognitionGame
-    level={activeLevelKey}
-    data={selectedLevelData as any}
-    initialQuestionIndex={Math.max((letterRecProgress.current_question || 1) - 1, 0)}
-    onProgress={(questionIndex: number) =>
-      updatePracticeProgress(
-        activeLevelKey,
-        "Letter Recognition",
-        questionIndex + 1,
-        false,
-        letterRecProgress.score
-      )
-    }
-    onComplete={handleGameComplete}
-    onClose={() => setActiveLessonGame(null)}
-  />
-);
 }
 
   if (activeLessonGame === "SIMPLE_WORDS") {
