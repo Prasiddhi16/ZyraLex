@@ -3,7 +3,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import LottieView from "lottie-react-native";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { supabase } from "../../lib/supabase";
 
 export default function Onboarding() {
   const router = useRouter();
@@ -13,8 +14,25 @@ export default function Onboarding() {
     router.replace(`/${choice}`);
   };
 
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+
+      await AsyncStorage.removeItem("moduleChoice");
+      router.replace("/signup"); 
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to sign out");
+    }
+  };
+
   return (
     <View style={styles.container}>
+      {/* Sign Out Button Icon Match */}
+      <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+        <Ionicons name="exit-outline" size={24} color="#007AFF" />
+      </TouchableOpacity>
+
       <Text style={styles.title}>Choose Your Learning Module</Text>
 
       {/* Panda mascot */}
@@ -36,7 +54,7 @@ export default function Onboarding() {
         style={styles.cardWrapper}
       >
         <LinearGradient
-          colors={["#1679ea", "#70b5f9"]} // gradient shades of blue
+          colors={["#1679ea", "#70b5f9"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.cardGradient}
@@ -74,7 +92,7 @@ export default function Onboarding() {
         style={styles.cardWrapper}
       >
         <LinearGradient
-          colors={["#70944b", "#a0bb7f"]} // gradient shades of orange
+          colors={["#70944b", "#a0bb7f"]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.cardGradient}
@@ -110,10 +128,29 @@ export default function Onboarding() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "center", padding: 20 },
+  container: { flex: 1, justifyContent: "center", padding: 20, backgroundColor: "#fff" },
+  
+  signOutButton: {
+    position: "absolute",
+    top: 50,
+    right: 20,
+    width: 45,
+    height: 45,
+    borderRadius: 22.5,
+    backgroundColor: "#f2f4f7",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+
   title: {
     fontSize: 30,
-    marginBottom: 30,
+    marginBottom: 20,
     fontWeight: "700",
     textAlign: "center",
   },
@@ -123,14 +160,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 20,
   },
-  mascot: { width: 200, height: 200 },
+  mascot: { width: 180, height: 180 },
   speechBubble: {
     backgroundColor: "#eee3ab",
     padding: 10,
     borderRadius: 20,
     elevation: 3,
     textAlign: "center",
-    marginBottom: 10,
+    marginBottom: 5,
   },
 
   cardWrapper: {
@@ -140,7 +177,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   cardGradient: {
-    padding: 10,
+    padding: 15,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
@@ -152,11 +189,11 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "700",
     color: "#fff",
-    marginBottom: 10,
+    marginBottom: 5,
   },
-  cardSubtitle: { color: "#fff", marginBottom: 20 },
+  cardSubtitle: { color: "#fff", marginBottom: 15, fontSize: 13 },
 
   cardButtons: { flexDirection: "row", gap: 15 },
   cardButton: { flexDirection: "row", alignItems: "center", gap: 5 },
-  cardButtonText: { color: "#fff", fontSize: 14 },
+  cardButtonText: { color: "#fff", fontSize: 13 },
 });

@@ -37,7 +37,7 @@ const lesson = {
     ],
   },
   hearIt: {
-    title: "👂 Listen Carefully",
+    title: " Listen Carefully",
     instruction:
       "Tap Mimo to hear the secret sound, then pick the matching card!",
     rounds: [
@@ -46,14 +46,14 @@ const lesson = {
         answer: "CH",
         options: ["CH", "SH"],
         interactionType: "tap-to-reveal",
-        successMessage: "Whoosh! You have the ears of a true detective! 🚂",
+        successMessage: "Whoosh! You have the ears of a true detective!",
       },
       {
         audio: "sh",
         answer: "SH",
         options: ["CH", "SH"],
         interactionType: "tap-to-reveal",
-        successMessage: "Awesome! You caught that quiet whisper sound! 🤫",
+        successMessage: "Awesome! You caught that quiet whisper sound! ",
       },
     ],
   },
@@ -63,13 +63,13 @@ const lesson = {
     rounds: [
       {
         expected: "CH",
-        hint: "Open your mouth wide and make it snappy: CH-CH-CH! 💥",
+        hint: "Open your mouth wide and make it snappy: CH-CH-CH!",
         animationType: "pulse-on-audio",
         visualAnchor: "CH",
       },
       {
         expected: "SH",
-        hint: "Put one finger near your lips and whisper softly: SHHH... 🤫",
+        hint: "Put one finger near your lips and whisper softly: SHHH...",
         animationType: "stroke-by-stroke",
         visualAnchor: "SH",
       },

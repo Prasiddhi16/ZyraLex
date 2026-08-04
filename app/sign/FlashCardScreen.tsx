@@ -1,10 +1,20 @@
 import { useSignModule } from '@/hooks/useSignModule';
 import { FlashCARD } from "@/models/flashcard";
 import { createFlashCards } from "@/utils/flashcardHelp";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ResizeMode, Video } from "expo-av";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View
+} from "react-native";
 
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
@@ -17,15 +27,15 @@ function shuffleArray<T>(array: T[]): T[] {
 
 export default function FlashCardScreen() {
   const { levelId, lessonId } = useLocalSearchParams<{ levelId: string; lessonId: string }>();
-  const { lessonMap, loading } = useSignModule();
+  const { lessonMap, loading, levels } = useSignModule();
   const lesson = lessonMap[`${levelId}_${lessonId}`];
   const router = useRouter();
 
   const [flashcards, setFlashcards] = useState<FlashCARD[]>([]);
   const [flipped, setFlipped] = useState(false);
   const [currentCard, setCurrentCard] = useState(0);
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
 
-  
   useEffect(() => {
     if (lesson) {
       setFlashcards(shuffleArray(createFlashCards(lesson)));
@@ -42,7 +52,44 @@ export default function FlashCardScreen() {
   const totalCards = flashcards.length;
   const card = flashcards[currentCard];
 
-  const handleAnswer = (action: string) => {
+ const markLessonComplete = async () => {
+  // Mark this Flash Card lesson as completed
+  await AsyncStorage.setItem(
+    `flash_${levelId}_${lessonId}_completed`,
+    "true"
+  );
+
+  // Check if all Flash Card lessons in this level are completed
+  const currentLevel = levels.find(l => l.levelId === levelId);
+
+  if (currentLevel) {
+    const results = await Promise.all(
+      currentLevel.lessons.map(l =>
+        AsyncStorage.getItem(
+          `flash_${levelId}_${l.lessonId}_completed`
+        )
+      )
+    );
+
+    const allComplete = results.every(val => val === "true");
+
+    if (allComplete) {
+      await AsyncStorage.setItem(
+        `flash_level_${levelId}_completed`,
+        "true"
+      );
+
+    const key = `flash_${levelId}_${lessonId}_completed`;
+
+const value = await AsyncStorage.getItem(key);
+
+console.log("Saved key:", key);
+console.log("Saved value:", value);
+    }
+  }
+};
+
+  const handleAnswer = async (action: string) => {
     if (action === "again" && currentCard > 0) {
       setCurrentCard(currentCard - 1);
     } else if (action === "skip" && currentCard < totalCards) {
@@ -51,10 +98,8 @@ export default function FlashCardScreen() {
       if (currentCard < totalCards - 1) {
         setCurrentCard(currentCard + 1);
       } else {
-        Alert.alert("Lesson Complete", "🎉 You’ve finished all flashcards!", [
-          { text: "Practice again", onPress: () => setCurrentCard(0) },
-          { text: "Exit", style: "destructive", onPress: () => router.push("/sign/practicegrid") },
-        ]);
+        await markLessonComplete();
+        setShowCompleteModal(true); 
       }
     }
     setFlipped(false);
@@ -137,10 +182,24 @@ export default function FlashCardScreen() {
           <Text style={styles.nextText}>Next</Text>
         </Pressable>
       </View>
+
+      {/* Completion Modal */}
+      <Modal visible={showCompleteModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Lesson Complete 🎉</Text>
+            <Pressable onPress={() => { setCurrentCard(0); setShowCompleteModal(false); }}>
+              <Text style={styles.modalButton}>Practice again</Text>
+            </Pressable>
+            <Pressable onPress={() => { setShowCompleteModal(false); router.push("/sign/Flashgrid"); }}>
+              <Text style={styles.modalButton}>Exit</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#edf7f0", paddingHorizontal: 20, paddingTop: 15 },
@@ -192,4 +251,28 @@ const styles = StyleSheet.create({
   skipText: { color: "#D18A00", fontWeight: "700" },
   nextText: { color: "#16A34A", fontWeight: "700" },
   video: { width: 200, height: 150, borderRadius: 16, marginTop: 10 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalBox: {
+    backgroundColor: "#fff",
+    padding: 20,
+    borderRadius: 16,
+    alignItems: "center",
+    width: "80%",
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 20,
+  },
+  modalButton: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#007AFF",
+    marginTop: 10,
+  },
 });

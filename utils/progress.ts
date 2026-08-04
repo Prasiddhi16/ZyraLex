@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
 export const weakAreaToLesson: Record<string, string> = {
   letter_reversal: "letter_reversal",
@@ -123,4 +124,30 @@ export async function getLearnEntryRoute(
     level: assessment.level ?? "level1",
     lesson: assessment.weak_area ?? "letter_reversal",
   };
+}
+
+// ... keep all your existing exports (getLatestAssessment, saveCurrentProgress, etc.) ...
+
+/**
+ * Tracks and accumulates active learning time for the dyslexia module.
+ * Saved to AsyncStorage under 'learning_time_dyslexic' for dashboard analytics.
+ */
+export async function trackDyslexiaTime(secondsSpent: number) {
+  try {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, "0");
+    const day = String(today.getDate()).padStart(2, "0");
+    const todayKey = `${year}-${month}-${day}`;
+
+    const stored = await AsyncStorage.getItem("learning_time_dyslexic");
+    const data: Record<string, number> = stored ? JSON.parse(stored) : {};
+
+    // Accumulate the seconds for today
+    data[todayKey] = (data[todayKey] || 0) + secondsSpent;
+
+    await AsyncStorage.setItem("learning_time_dyslexic", JSON.stringify(data));
+  } catch (error) {
+    console.log("Failed to save dyslexia learning time:", error);
+  }
 }

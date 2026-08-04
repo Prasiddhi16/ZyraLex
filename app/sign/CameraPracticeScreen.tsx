@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { ResizeMode, Video } from "expo-av";
 import {
   CameraView,
@@ -7,15 +8,16 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Modal,
   StyleSheet,
   Text,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 
 import { useSignModule } from '@/hooks/useSignModule';
-import { recordPracticeAttempt } from '@/lib/queries/signModule'; 
-import { supabase } from '@/lib/supabase'; 
+import { recordPracticeAttempt } from '@/lib/queries/signModule';
+import { supabase } from '@/lib/supabase';
 
 export default function CameraPracticeScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -23,13 +25,14 @@ export default function CameraPracticeScreen() {
   const router = useRouter();
 
   const { levelId, lessonId } = useLocalSearchParams<any>();
-  const { lessonMap, loading } = useSignModule();
+  const { lessonMap, loading, levels } = useSignModule();
 
   const [index, setIndex] = useState(0);
   const [ isCapturing, setIsCapturing ] = useState(false);
   const [progress, setProgress] = useState(0);
   const [score, setScore] = useState(0);
   const [feedback, setFeedback] = useState("");
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
 
   useEffect(() => {
     requestPermission();
@@ -164,13 +167,49 @@ export default function CameraPracticeScreen() {
       setFeedback("Couldn't reach the practice server — check your connection.");
     }
   };
+const markLessonComplete = async () => {
+  // Mark this lesson as completed
+  await AsyncStorage.setItem(
+    `camera_${levelId}_${lessonId}_completed`,
+    "true"
+  );
 
-  const next = () => {
-    setFeedback("");
-    setScore(0);
-    if (index < lesson.signs.length - 1) setIndex(index + 1);
-    else router.push("/sign/practicegrid");
-  };
+  const currentLevel = levels.find(
+    (l) => l.levelId === levelId
+  );
+
+  if (!currentLevel) return;
+
+  const results = await Promise.all(
+    currentLevel.lessons.map((lesson) =>
+      AsyncStorage.getItem(
+        `camera_${levelId}_${lesson.lessonId}_completed`
+      )
+    )
+  );
+
+  const allComplete = results.every(
+    (value) => value === "true"
+  );
+
+  if (allComplete) {
+    await AsyncStorage.setItem(
+      `camera_level_${levelId}_completed`,
+      "true"
+    );
+  }
+};
+  const next = async () => {
+  setFeedback("");
+  setScore(0);
+
+  if (index < lesson.signs.length - 1) {
+    setIndex(index + 1);
+  } else {
+    await markLessonComplete();
+    setShowCompleteModal(true);
+  }
+};
 
   const prev = () => {
     setFeedback("");
@@ -230,6 +269,43 @@ export default function CameraPracticeScreen() {
           <Text style={styles.captureText}>Capture Gesture</Text>
         </TouchableOpacity>
       </View>
+      <Modal
+  visible={showCompleteModal}
+  transparent
+  animationType="fade"
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalBox}>
+      <Text style={styles.modalTitle}>
+        Lesson Complete 🎉
+      </Text>
+
+      <TouchableOpacity
+        onPress={() => {
+          setIndex(0);
+          setScore(0);
+          setFeedback("");
+          setShowCompleteModal(false);
+        }}
+      >
+        <Text style={styles.modalButton}>
+          Practice Again
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => {
+          setShowCompleteModal(false);
+          router.push("/sign/practicegrid");
+        }}
+      >
+        <Text style={styles.modalButton}>
+          Exit
+        </Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
     </View>
   );
 }
@@ -258,4 +334,31 @@ const styles = StyleSheet.create({
   loading: { position: "absolute", top: "45%", alignSelf: "center", alignItems: "center" },
   progressBar: { width: 200, height: 10, backgroundColor: "#333", marginTop: 50, borderRadius: 5 },
   progressFill: { height: 10, backgroundColor: "#22c55e", borderRadius: 5 },
+  modalOverlay: {
+  flex: 1,
+  justifyContent: "center",
+  alignItems: "center",
+  backgroundColor: "rgba(0,0,0,0.5)",
+},
+
+modalBox: {
+  width: "80%",
+  backgroundColor: "#fff",
+  borderRadius: 16,
+  padding: 24,
+  alignItems: "center",
+},
+
+modalTitle: {
+  fontSize: 22,
+  fontWeight: "700",
+  marginBottom: 20,
+},
+
+modalButton: {
+  fontSize: 18,
+  color: "#16A34A",
+  fontWeight: "600",
+  marginTop: 16,
+},
 });

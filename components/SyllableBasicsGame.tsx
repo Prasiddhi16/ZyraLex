@@ -11,12 +11,22 @@ type DifficultyLevel = "beginner" | "intermediate" | "advanced";
 interface Props {
   level: DifficultyLevel;
   data: any;
+  initialQuestionIndex?: number;
+  onProgress?: (index: number) => void;
   onComplete: () => void;
   onClose: () => void;
 }
 
-export default function SyllableBasicsGame({ level, data, onComplete, onClose }: Props) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+export default function SyllableBasicsGame({
+  level,
+  data,
+  initialQuestionIndex = 0,
+  onProgress,
+  onComplete,
+  onClose,
+}: Props) {
+  // ✅ Correctly placed inside the component body and initialized with initialQuestionIndex
+  const [currentIndex, setCurrentIndex] = useState(initialQuestionIndex);
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
   const [isCorrect, setIsCorrect] = useState(false);
   const [isGameFinished, setIsGameFinished] = useState(false);
@@ -28,13 +38,19 @@ export default function SyllableBasicsGame({ level, data, onComplete, onClose }:
   // Parse structural fields supporting variable names syllableBasics or syllables
   const gameDataList = data?.syllableBasics || data?.syllables || [];
   const totalQuestions = gameDataList.length;
-  const currentData = gameDataList[currentIndex] || { word: '', syllablesCount: 0, breakdown: '', meaningClue: '', audioPrompt: '' };
+  const currentData = gameDataList[currentIndex] || {
+    word: '',
+    syllablesCount: 0,
+    breakdown: '',
+    meaningClue: '',
+    audioPrompt: '',
+  };
 
   const contentScale = useRef(new Animated.Value(0.9)).current;
   const slideCelebration = useRef(new Animated.Value(-height)).current;
 
   // 🐼 Advanced Mimo Box Pop-Out Animation Refs
-  const mimoPopAnim = useRef(new Animated.Value(1)).current; 
+  const mimoPopAnim = useRef(new Animated.Value(1)).current;
   const cardShakeAnim = useRef(new Animated.Value(0)).current;
   const bgFlashColor = useRef(new Animated.Value(0)).current;
 
@@ -94,24 +110,28 @@ export default function SyllableBasicsGame({ level, data, onComplete, onClose }:
       setMimoMood("awesome");
       setMimoSpeech(`Woohoo! ${currentData.word.toUpperCase()} has ${num} ${num === 1 ? 'beat' : 'beats'}! 🎵`);
       speakWord(`That's right! ${currentData.word} has ${num} ${num === 1 ? 'beat' : 'beats'}: ${currentData.breakdown}!`);
+
+      // ✅ Save exact progress to Database when answered correctly
+      if (onProgress) {
+        onProgress(currentIndex);
+      }
     } else {
       setMimoMood("remix");
       setMimoSpeech("Let's hit the remix! Try counting that rhythm again! 🔥");
       speakWord(`Let's try that rhythm again! Listen closely to the beats.`);
-      
-      // Rumble the entire game card structure + change bg environment frame subtly
+
       Animated.parallel([
         Animated.sequence([
           Animated.timing(cardShakeAnim, { toValue: 14, duration: 40, useNativeDriver: true }),
           Animated.timing(cardShakeAnim, { toValue: -14, duration: 40, useNativeDriver: true }),
           Animated.timing(cardShakeAnim, { toValue: 10, duration: 40, useNativeDriver: true }),
           Animated.timing(cardShakeAnim, { toValue: -10, duration: 40, useNativeDriver: true }),
-          Animated.timing(cardShakeAnim, { toValue: 0, duration: 40, useNativeDriver: true })
+          Animated.timing(cardShakeAnim, { toValue: 0, duration: 40, useNativeDriver: true }),
         ]),
         Animated.sequence([
           Animated.timing(bgFlashColor, { toValue: 1, duration: 120, useNativeDriver: false }),
-          Animated.timing(bgFlashColor, { toValue: 0, duration: 450, useNativeDriver: false })
-        ])
+          Animated.timing(bgFlashColor, { toValue: 0, duration: 450, useNativeDriver: false }),
+        ]),
       ]).start();
 
       setTimeout(() => {
@@ -124,7 +144,7 @@ export default function SyllableBasicsGame({ level, data, onComplete, onClose }:
 
   const handleNext = () => {
     if (currentIndex < totalQuestions - 1) {
-      setCurrentIndex(prev => prev + 1);
+      setCurrentIndex((prev) => prev + 1);
     } else {
       setIsGameFinished(true);
     }
@@ -143,8 +163,10 @@ export default function SyllableBasicsGame({ level, data, onComplete, onClose }:
     );
   }
 
-  const cleanClueText = currentData?.meaningClue 
-    ? (currentData.meaningClue.includes(" ") ? currentData.meaningClue.substring(currentData.meaningClue.indexOf(" ") + 1) : currentData.meaningClue)
+  const cleanClueText = currentData?.meaningClue
+    ? currentData.meaningClue.includes(" ")
+      ? currentData.meaningClue.substring(currentData.meaningClue.indexOf(" ") + 1)
+      : currentData.meaningClue
     : "";
 
   const lookupKey = currentData?.word?.toUpperCase();
@@ -152,13 +174,13 @@ export default function SyllableBasicsGame({ level, data, onComplete, onClose }:
 
   const interpolatedBg = bgFlashColor.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#FAF5FF', '#FFF0F2']
+    outputRange: ['#FAF5FF', '#FFF0F2'],
   });
 
   return (
     <Animated.View style={[s.safeContainer, { backgroundColor: interpolatedBg }]}>
-      <ScrollView 
-        style={s.scrollContainer} 
+      <ScrollView
+        style={s.scrollContainer}
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
         alwaysBounceVertical={true}
@@ -175,31 +197,35 @@ export default function SyllableBasicsGame({ level, data, onComplete, onClose }:
 
             <View style={s.questionCard}>
               {mainSubjectImage && (
-                <Image 
-                  source={mainSubjectImage} 
-                  style={s.heroRender} 
-                  resizeMode="contain" 
+                <Image
+                  source={mainSubjectImage}
+                  style={s.heroRender}
+                  resizeMode="contain"
                 />
               )}
-              
+
               <Text style={s.mainWord}>{isCorrect ? currentData.breakdown : currentData.word}</Text>
               <Text style={s.clueText}>{cleanClueText}</Text>
             </View>
 
             {/* 🐼 THE COMIC-POP MIMO BOX POP-OUT */}
             <Animated.View style={[s.mimoPopOutContainer, { transform: [{ scale: mimoPopAnim }] }]}>
-              <View style={[
-                s.mimoInnerBox,
-                mimoMood === "awesome" && s.boxCorrect,
-                mimoMood === "remix" && s.boxWrong
-              ]}>
+              <View
+                style={[
+                  s.mimoInnerBox,
+                  mimoMood === "awesome" && s.boxCorrect,
+                  mimoMood === "remix" && s.boxWrong,
+                ]}
+              >
                 <Image source={mimoImageSource} style={s.mimoAvatarSide} resizeMode="contain" />
                 <View style={{ flex: 1 }}>
-                  <Text style={[
-                    s.mimoMessageText,
-                    mimoMood === "awesome" && s.textCorrect,
-                    mimoMood === "remix" && s.textWrong
-                  ]}>
+                  <Text
+                    style={[
+                      s.mimoMessageText,
+                      mimoMood === "awesome" && s.textCorrect,
+                      mimoMood === "remix" && s.textWrong,
+                    ]}
+                  >
                     {mimoSpeech}
                   </Text>
                 </View>
@@ -221,11 +247,11 @@ export default function SyllableBasicsGame({ level, data, onComplete, onClose }:
                       s.drumPad,
                       isCurrentSelection && s.drumSelected,
                       isWrongSelection && s.drumWrong,
-                      isCorrect && currentData.syllablesCount === num && s.drumCorrect
+                      isCorrect && currentData.syllablesCount === num && s.drumCorrect,
                     ]}
                   >
                     <Image source={DRUM_ASSETS.ACTIVE} style={s.inputDrumAsset} />
-                    
+
                     <View style={[s.circleBadge, isCorrect && currentData.syllablesCount === num && s.badgeCorrect, isWrongSelection && s.badgeWrong]}>
                       <Text style={s.drumNumberText}>{num}</Text>
                     </View>
@@ -278,13 +304,12 @@ const s = StyleSheet.create({
   progressBadge: { fontSize: 13, fontWeight: '700', color: '#7C3AED', backgroundColor: '#F3E8FF', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, overflow: 'hidden' },
   closeBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E9D5FF' },
   closeText: { fontSize: 16, color: '#A78BFA', fontWeight: 'bold' },
-  
+
   questionCard: { backgroundColor: '#fff', width: '100%', paddingVertical: 16, paddingHorizontal: 20, borderRadius: 24, alignItems: 'center', borderWidth: 1, borderColor: '#E9D5FF', shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 6, elevation: 2 },
   heroRender: { width: 130, height: 130, marginBottom: 8, borderRadius: 16 },
   mainWord: { fontSize: 34, fontWeight: '900', color: '#4C1D95', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 },
   clueText: { fontSize: 14, fontWeight: '600', color: '#6D28D9', textAlign: 'center', paddingHorizontal: 10, marginTop: 4 },
-  
-  // 🐼 Comic-Pop Horizontal Pop Out Style
+
   mimoPopOutContainer: { width: '100%', marginVertical: 4 },
   mimoInnerBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 12, borderRadius: 22, borderBottomWidth: 4, borderColor: '#D8B4FE', gap: 12, shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.08, shadowRadius: 5, elevation: 3 },
   boxCorrect: { backgroundColor: '#E6FDF4', borderColor: '#34D399' },
@@ -305,7 +330,7 @@ const s = StyleSheet.create({
   badgeWrong: { backgroundColor: '#F87171' },
   drumNumberText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   beatLabel: { fontSize: 12, fontWeight: '700', color: '#4B5563' },
-  
+
   actionRow: { width: '100%', minHeight: 55, justifyContent: 'center', marginTop: 6 },
   nextBtn: { backgroundColor: '#A78BFA', width: '100%', paddingVertical: 15, borderRadius: 16, alignItems: 'center', shadowColor: '#7C3AED', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 4, elevation: 3 },
   nextBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
@@ -318,5 +343,5 @@ const s = StyleSheet.create({
   bonusTitle: { fontSize: 14, fontWeight: '700', color: '#5B21B6' },
   bonusMeta: { fontSize: 11, color: '#6D28D9', marginTop: 2 },
   finalBtn: { backgroundColor: '#7C3AED', width: '100%', paddingVertical: 15, borderRadius: 16, alignItems: 'center' },
-  finalBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' }
+  finalBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

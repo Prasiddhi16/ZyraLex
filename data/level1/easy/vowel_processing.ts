@@ -1,8 +1,8 @@
 const lesson = {
   id: "vowel_processing",
   title: "Vowel Safari: Short Vowels",
-  subtitle: "Let's track down short vowel sounds hidden inside words! ",
-  color: "#FEF3C7",
+  subtitle: "Let's track down short vowel sounds hidden inside words!",
+  color: "#FEF3C7", // Warm safari yellow
   mascot: "🦁",
   explanation: [
     {
@@ -36,21 +36,21 @@ const lesson = {
   ],
   examples: [
     {
-      letter: "a",
+      letter: "c",
       word: "cat",
       emoji: "🐱",
       sentence: "The c-a-t sat on the mat.",
       color: "#EF4444",
     },
     {
-      letter: "o",
+      letter: "f",
       word: "fox",
       emoji: "🦊",
       sentence: "A quick f-o-x hopped over the log.",
       color: "#F59E0B",
     },
     {
-      letter: "i",
+      letter: "f",
       word: "fish",
       emoji: "🐟",
       sentence: "The little f-i-sh can swim fast.",
@@ -84,7 +84,11 @@ const lesson = {
     "🌟 Take your time, hunting for letters is a fun puzzle!",
   ],
   completionMessage:
+<<<<<<< HEAD
+    "Super Safari Skills! You tracked down those short vowels! ",
+=======
     "Super Safari Skills! You tracked down those short vowels!",
+>>>>>>> d96c5d6868b4ccf6c5278cf25d4057a1711565da
 };
 
 export default lesson;
