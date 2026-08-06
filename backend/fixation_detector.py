@@ -28,6 +28,5 @@ class FixationDetector:
                 return True, centroid_x, centroid_y, duration
             return False, None, None, duration
         else:
-            # Gaze has moved too far - not a fixation, reset history
             self.gaze_history = self.gaze_history[-1:]
             return False, None, None, 0.0

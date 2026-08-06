@@ -1,7 +1,7 @@
 const level1Decoding = {
   id: "decoding_level1",
   title: "Decoding b and d Sounds",
-  subtitle: "Listen closely and blend sounds to read words! 🔊",
+  subtitle: "Listen closely and blend sounds to read words!",
   color: "#DBEAFE",
   mascot: "assets/mimo1.png",
   progressColor: "#2563EB",

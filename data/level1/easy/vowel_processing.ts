@@ -84,11 +84,7 @@ const lesson = {
     "🌟 Take your time, hunting for letters is a fun puzzle!",
   ],
   completionMessage:
-<<<<<<< HEAD
     "Super Safari Skills! You tracked down those short vowels! ",
-=======
-    "Super Safari Skills! You tracked down those short vowels!",
->>>>>>> d96c5d6868b4ccf6c5278cf25d4057a1711565da
 };
 
 export default lesson;

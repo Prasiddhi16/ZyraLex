@@ -1,7 +1,7 @@
 const lesson = {
   id: "chunking",
   title: "Chunking Words",
-  subtitle: "Let's break big words into smaller easy chunks! 🧩",
+  subtitle: "Let's break big words into smaller easy chunks!",
   color: "#DCFCE7",
   mascot: "🦜",
   explanation: [

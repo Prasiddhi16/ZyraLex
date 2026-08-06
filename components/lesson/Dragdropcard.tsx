@@ -21,7 +21,7 @@ type Practice = {
 interface DragDropCardProps {
   practice: Practice;
   onAnswer: (selected: string, correct: string) => void;
-  onSpeak: (text: string) => void; // Added type-safe prop
+  onSpeak: (text: string) => void; 
 }
 
 function DraggableTile({

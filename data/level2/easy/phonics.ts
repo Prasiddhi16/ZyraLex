@@ -2,14 +2,14 @@ const level2Phonics = {
   id: "level2_phonics",
   title: "Advanced Phonics",
   subtitle:
-    "Learn more complex sounds and blend letter teammates together! 🧩🎵",
+    "Learn more complex sounds and blend letter teammates together! ",
   color: "#E0F2FE",
   mascot: "assets/mimo1.png",
   progressColor: "#2563EB",
 
   introduction: {
     mascotMessage:
-      "Welcome back, Sound Detective! 🕵️‍♂️ Mimo is here. Let's find out how secret blend pairs like 'tr' and 'dr' change how we read words!",
+      "Welcome back, Sound Detective! Mimo is here. Let's find out how secret blend pairs like 'tr' and 'dr' change how we read words!",
   },
   explanation: [
     {

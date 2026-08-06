@@ -1,8 +1,7 @@
 import {
   Feather,
   FontAwesome5,
-  Ionicons,
-  MaterialCommunityIcons,
+  Ionicons
 } from "@expo/vector-icons";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as DocumentPicker from "expo-document-picker";
@@ -17,17 +16,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
-  View,
+  View
 } from "react-native";
 import { HelloWave } from "../../components/hello-wave";
 import { COLORS } from "../../constants/colors";
 import { supabase } from "../../lib/supabase";
-import {
-  ParsedPage,
-  parsePdfDocument
-} from "../../services/pdfParserService";
+import { ParsedPage, parsePdfDocument } from "../../services/pdfParserService";
 import { fetchSyllables, scanFlashcard } from "../../utils/flashcard";
 import {
   getLessonKeyForWeakArea,
@@ -86,18 +81,31 @@ export default function DyslexicHome() {
   const [splitWordsOn, setSplitWordsOn] = useState(false);
 
   // Accessibility / Visual Adjustments Modal State & Preferences (Temporary selection vs Applied preferences)
-  const [accessibilityModalVisible, setAccessibilityModalVisible] = useState(false);
+  const [accessibilityModalVisible, setAccessibilityModalVisible] =
+    useState(false);
   const [textSizeTemp, setTextSizeTemp] = useState<"A-" | "A+">("A-");
-  const [typographyStyleTemp, setTypographyStyleTemp] = useState<"Times New Roman" | "Modern Sans">("Times New Roman");
-  const [lineSpacingTemp, setLineSpacingTemp] = useState<"Compact" | "Standard" | "Relaxed">("Standard");
-  const [letterSpacingTemp, setLetterSpacingTemp] = useState<"Tight" | "Normal" | "Wide">("Normal");
+  const [typographyStyleTemp, setTypographyStyleTemp] = useState<
+    "Times New Roman" | "Modern Sans"
+  >("Times New Roman");
+  const [lineSpacingTemp, setLineSpacingTemp] = useState<
+    "Compact" | "Standard" | "Relaxed"
+  >("Standard");
+  const [letterSpacingTemp, setLetterSpacingTemp] = useState<
+    "Tight" | "Normal" | "Wide"
+  >("Normal");
   const [speechSpeedTemp, setSpeechSpeedTemp] = useState<string>("1.0x");
 
   // Applied Reader Preferences
   const [appliedTextSize, setAppliedTextSize] = useState<"A-" | "A+">("A-");
-  const [appliedTypographyStyle, setAppliedTypographyStyle] = useState<"Times New Roman" | "Modern Sans">("Times New Roman");
-  const [appliedLineSpacing, setAppliedLineSpacing] = useState<"Compact" | "Standard" | "Relaxed">("Standard");
-  const [appliedLetterSpacing, setAppliedLetterSpacing] = useState<"Tight" | "Normal" | "Wide">("Normal");
+  const [appliedTypographyStyle, setAppliedTypographyStyle] = useState<
+    "Times New Roman" | "Modern Sans"
+  >("Times New Roman");
+  const [appliedLineSpacing, setAppliedLineSpacing] = useState<
+    "Compact" | "Standard" | "Relaxed"
+  >("Standard");
+  const [appliedLetterSpacing, setAppliedLetterSpacing] = useState<
+    "Tight" | "Normal" | "Wide"
+  >("Normal");
   const [appliedSpeechSpeed, setAppliedSpeechSpeed] = useState<string>("1.0x");
 
   useFocusEffect(
@@ -425,11 +433,16 @@ export default function DyslexicHome() {
 
   const getSpeechRateMultiplier = (speedStr: string) => {
     switch (speedStr) {
-      case "0.5x": return 0.5;
-      case "1.0x": return 1.0;
-      case "1.5x": return 1.5;
-      case "2.0x": return 2.0;
-      default: return 1.0;
+      case "0.5x":
+        return 0.5;
+      case "1.0x":
+        return 1.0;
+      case "1.5x":
+        return 1.5;
+      case "2.0x":
+        return 2.0;
+      default:
+        return 1.0;
     }
   };
 
@@ -493,7 +506,8 @@ export default function DyslexicHome() {
     if (appliedLetterSpacing === "Tight") letterSpacing = -0.5;
     if (appliedLetterSpacing === "Wide") letterSpacing = 2;
 
-    const fontFamily = appliedTypographyStyle === "Times New Roman" ? "serif" : "sans-serif";
+    const fontFamily =
+      appliedTypographyStyle === "Times New Roman" ? "serif" : "sans-serif";
 
     return {
       fontSize,
@@ -633,7 +647,7 @@ export default function DyslexicHome() {
             <Pressable style={styles.actionButton} onPress={pickDocument}>
               <View style={styles.actionButtonContent}>
                 <Feather name="upload-cloud" size={24} color="#3b82f6" />
-                <Text style={styles.actionButtonLabel}>Easy Read PDF</Text>
+                <Text style={styles.actionButtonLabel}>Easy Read </Text>
               </View>
             </Pressable>
 
@@ -902,58 +916,135 @@ export default function DyslexicHome() {
       >
         <View style={accessibilityStyles.modalOverlay}>
           <View style={accessibilityStyles.modalCard}>
-            <Text style={accessibilityStyles.modalMainTitle}>Visual Adjustments</Text>
+            <Text style={accessibilityStyles.modalMainTitle}>
+              Visual Adjustments
+            </Text>
 
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={accessibilityStyles.modalScroll}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={accessibilityStyles.modalScroll}
+            >
               {/* Text Size */}
               <View style={accessibilityStyles.sectionGroup}>
-                <Text style={accessibilityStyles.sectionLabel}>Text Size ({appliedTextSize === "A+" ? "20px" : appliedTextSize === "A-" ? "14px" : "16px"})</Text>
+                <Text style={accessibilityStyles.sectionLabel}>
+                  Text Size (
+                  {appliedTextSize === "A+"
+                    ? "20px"
+                    : appliedTextSize === "A-"
+                      ? "14px"
+                      : "16px"}
+                  )
+                </Text>
                 <View style={accessibilityStyles.optionsRow}>
                   <Pressable
-                    style={[accessibilityStyles.optionPillLarge, textSizeTemp === "A-" && accessibilityStyles.optionPillActive]}
+                    style={[
+                      accessibilityStyles.optionPillLarge,
+                      textSizeTemp === "A-" &&
+                        accessibilityStyles.optionPillActive,
+                    ]}
                     onPress={() => setTextSizeTemp("A-")}
                   >
-                    <Text style={[accessibilityStyles.optionText, textSizeTemp === "A-" && accessibilityStyles.optionTextActive]}>A-</Text>
+                    <Text
+                      style={[
+                        accessibilityStyles.optionText,
+                        textSizeTemp === "A-" &&
+                          accessibilityStyles.optionTextActive,
+                      ]}
+                    >
+                      A-
+                    </Text>
                   </Pressable>
                   <Pressable
-                    style={[accessibilityStyles.optionPillLarge, textSizeTemp === "A+" && accessibilityStyles.optionPillActive]}
+                    style={[
+                      accessibilityStyles.optionPillLarge,
+                      textSizeTemp === "A+" &&
+                        accessibilityStyles.optionPillActive,
+                    ]}
                     onPress={() => setTextSizeTemp("A+")}
                   >
-                    <Text style={[accessibilityStyles.optionText, textSizeTemp === "A+" && accessibilityStyles.optionTextActive]}>A+</Text>
+                    <Text
+                      style={[
+                        accessibilityStyles.optionText,
+                        textSizeTemp === "A+" &&
+                          accessibilityStyles.optionTextActive,
+                      ]}
+                    >
+                      A+
+                    </Text>
                   </Pressable>
                 </View>
               </View>
 
               {/* Typography Style */}
               <View style={accessibilityStyles.sectionGroup}>
-                <Text style={accessibilityStyles.sectionLabel}>Typography Style</Text>
+                <Text style={accessibilityStyles.sectionLabel}>
+                  Typography Style
+                </Text>
                 <View style={accessibilityStyles.optionsRow}>
                   <Pressable
-                    style={[accessibilityStyles.optionPillLarge, typographyStyleTemp === "Times New Roman" && accessibilityStyles.optionPillActive]}
+                    style={[
+                      accessibilityStyles.optionPillLarge,
+                      typographyStyleTemp === "Times New Roman" &&
+                        accessibilityStyles.optionPillActive,
+                    ]}
                     onPress={() => setTypographyStyleTemp("Times New Roman")}
                   >
-                    <Text style={[accessibilityStyles.optionText, typographyStyleTemp === "Times New Roman" && accessibilityStyles.optionTextActive]}>Times New Roman</Text>
+                    <Text
+                      style={[
+                        accessibilityStyles.optionText,
+                        typographyStyleTemp === "Times New Roman" &&
+                          accessibilityStyles.optionTextActive,
+                      ]}
+                    >
+                      Times New Roman
+                    </Text>
                   </Pressable>
                   <Pressable
-                    style={[accessibilityStyles.optionPillLarge, typographyStyleTemp === "Modern Sans" && accessibilityStyles.optionPillActive]}
+                    style={[
+                      accessibilityStyles.optionPillLarge,
+                      typographyStyleTemp === "Modern Sans" &&
+                        accessibilityStyles.optionPillActive,
+                    ]}
                     onPress={() => setTypographyStyleTemp("Modern Sans")}
                   >
-                    <Text style={[accessibilityStyles.optionText, typographyStyleTemp === "Modern Sans" && accessibilityStyles.optionTextActive]}>Modern Sans</Text>
+                    <Text
+                      style={[
+                        accessibilityStyles.optionText,
+                        typographyStyleTemp === "Modern Sans" &&
+                          accessibilityStyles.optionTextActive,
+                      ]}
+                    >
+                      Modern Sans
+                    </Text>
                   </Pressable>
                 </View>
               </View>
 
               {/* Line Spacing */}
               <View style={accessibilityStyles.sectionGroup}>
-                <Text style={accessibilityStyles.sectionLabel}>Line Spacing</Text>
+                <Text style={accessibilityStyles.sectionLabel}>
+                  Line Spacing
+                </Text>
                 <View style={accessibilityStyles.optionsRowThree}>
                   {["Compact", "Standard", "Relaxed"].map((item) => (
                     <Pressable
                       key={item}
-                      style={[accessibilityStyles.optionPillSmall, lineSpacingTemp === item && accessibilityStyles.optionPillActive]}
+                      style={[
+                        accessibilityStyles.optionPillSmall,
+                        lineSpacingTemp === item &&
+                          accessibilityStyles.optionPillActive,
+                      ]}
                       onPress={() => setLineSpacingTemp(item as any)}
                     >
-                      <Text style={[accessibilityStyles.optionText, lineSpacingTemp === item && accessibilityStyles.optionTextActive]}>{item}</Text>
+                      <Text
+                        style={[
+                          accessibilityStyles.optionText,
+                          lineSpacingTemp === item &&
+                            accessibilityStyles.optionTextActive,
+                        ]}
+                      >
+                        {item}
+                      </Text>
                     </Pressable>
                   ))}
                 </View>
@@ -961,15 +1052,29 @@ export default function DyslexicHome() {
 
               {/* Letter Spacing */}
               <View style={accessibilityStyles.sectionGroup}>
-                <Text style={accessibilityStyles.sectionLabel}>Letter Spacing</Text>
+                <Text style={accessibilityStyles.sectionLabel}>
+                  Letter Spacing
+                </Text>
                 <View style={accessibilityStyles.optionsRowThree}>
                   {["Tight", "Normal", "Wide"].map((item) => (
                     <Pressable
                       key={item}
-                      style={[accessibilityStyles.optionPillSmall, letterSpacingTemp === item && accessibilityStyles.optionPillActive]}
+                      style={[
+                        accessibilityStyles.optionPillSmall,
+                        letterSpacingTemp === item &&
+                          accessibilityStyles.optionPillActive,
+                      ]}
                       onPress={() => setLetterSpacingTemp(item as any)}
                     >
-                      <Text style={[accessibilityStyles.optionText, letterSpacingTemp === item && accessibilityStyles.optionTextActive]}>{item}</Text>
+                      <Text
+                        style={[
+                          accessibilityStyles.optionText,
+                          letterSpacingTemp === item &&
+                            accessibilityStyles.optionTextActive,
+                        ]}
+                      >
+                        {item}
+                      </Text>
                     </Pressable>
                   ))}
                 </View>
@@ -977,15 +1082,29 @@ export default function DyslexicHome() {
 
               {/* Speech Speed */}
               <View style={accessibilityStyles.sectionGroup}>
-                <Text style={accessibilityStyles.sectionLabel}>Speech Speed</Text>
+                <Text style={accessibilityStyles.sectionLabel}>
+                  Speech Speed
+                </Text>
                 <View style={accessibilityStyles.optionsRowFour}>
                   {["0.5x", "1.0x", "1.5x", "2.0x"].map((item) => (
                     <Pressable
                       key={item}
-                      style={[accessibilityStyles.optionPillQuad, speechSpeedTemp === item && accessibilityStyles.optionPillActive]}
+                      style={[
+                        accessibilityStyles.optionPillQuad,
+                        speechSpeedTemp === item &&
+                          accessibilityStyles.optionPillActive,
+                      ]}
                       onPress={() => setSpeechSpeedTemp(item)}
                     >
-                      <Text style={[accessibilityStyles.optionText, speechSpeedTemp === item && accessibilityStyles.optionTextActive]}>{item}</Text>
+                      <Text
+                        style={[
+                          accessibilityStyles.optionText,
+                          speechSpeedTemp === item &&
+                            accessibilityStyles.optionTextActive,
+                        ]}
+                      >
+                        {item}
+                      </Text>
                     </Pressable>
                   ))}
                 </View>
@@ -1004,7 +1123,9 @@ export default function DyslexicHome() {
                 setAccessibilityModalVisible(false);
               }}
             >
-              <Text style={accessibilityStyles.applyButtonText}>Apply Changes</Text>
+              <Text style={accessibilityStyles.applyButtonText}>
+                Apply Changes
+              </Text>
             </Pressable>
           </View>
         </View>

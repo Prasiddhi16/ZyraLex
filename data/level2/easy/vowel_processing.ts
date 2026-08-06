@@ -1,7 +1,7 @@
 const lesson = {
   id: "vowel_processing",
   title: "Vowel Teams: The Double Agents",
-  subtitle: "When two vowels team up, they make a brand new sound! 🤝",
+  subtitle: "When two vowels team up, they make a brand new sound! ",
   color: "#E0F2FE", // Light blue theme for Level 2
   mascot: "🦊",
   explanation: [
