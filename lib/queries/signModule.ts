@@ -75,33 +75,41 @@ export async function fetchSignModule(userId?: string): Promise<{
 
 //internal fetch helpers 
 async function fetchLevels() {
-  const { data, error } = await supabase
+  const { data: { session } } = await supabase.auth.getSession();
+  console.log('[fetchLevels] session role:', session ? 'authenticated' : 'anon (no session)');
+  const { data, error, status, statusText } = await supabase
     .from('levels')
     .select('id, level_name, level_number')
     .eq('module', MODULE)
     .order('level_number', { ascending: true });
+  console.log('[fetchLevels] status:', status, statusText, 'rows:', data?.length, 'error:', error);
   if (error) throw error;
   return data ?? [];
 }
 
 async function fetchLessons() {
-  const { data, error } = await supabase
+  const { data, error, status, statusText } = await supabase
     .from('lessons')
     .select(
       `id, lesson_title, level_id,
        sign_lesson_details ( xp, description,practice_description, level_number, lesson_number, lesson_title )`
     )
     .eq('module', MODULE);
+  console.log('[fetchLessons] status:', status, statusText, 'rows:', data?.length, 'error:', error);
+  if (data?.length) {
+    console.log('[fetchLessons] sample row:', JSON.stringify(data[0]));
+  }
   if (error) throw error;
   return data ?? [];
 }
 
 async function fetchSigns(lessonIds: string[]) {
-  const { data, error } = await supabase
+  const { data, error, status, statusText } = await supabase
     .from('lesson_signs')
     .select('id, lesson_id, sign_id, label, image_url, video_url, hint, gesture_key, sort_order')
     .in('lesson_id', lessonIds)
     .order('sort_order', { ascending: true });
+  console.log('[fetchSigns] status:', status, statusText, 'rows:', data?.length, 'error:', error);
   if (error) throw error;
   return data ?? [];
 }
